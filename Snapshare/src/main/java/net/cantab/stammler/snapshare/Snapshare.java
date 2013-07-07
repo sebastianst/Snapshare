@@ -56,13 +56,14 @@ public class Snapshare implements IXposedHookLoadPackage {
                 }*/
                 int dataLength = intent.getIntExtra("dataLength", -1);
                 Log.d(LOG_TAG, "data length: " + dataLength);
-                if (dataLength > 0) {
-                    Bitmap imageBitmap = BitmapFactory.decodeByteArray(intent.getByteArrayExtra("imageData"), 0, dataLength);
-                    Class SnapCapturedEventClass = Class.forName("com.snapchat.android.util.eventbus.SnapCapturedEvent", true, thiz.getClass().getClassLoader());
-                    Object captureEvent = newInstance(SnapCapturedEventClass, imageBitmap);
-                    callMethod(thiz, "onSnapCaptured", captureEvent);
+                if (type != null) {
+                    if (type.startsWith("image/") & dataLength > 0) {
+                        Bitmap imageBitmap = BitmapFactory.decodeByteArray(intent.getByteArrayExtra("imageData"), 0, dataLength);
+                        Class SnapCapturedEventClass = Class.forName("com.snapchat.android.util.eventbus.SnapCapturedEvent", true, thiz.getClass().getClassLoader());
+                        Object captureEvent = newInstance(SnapCapturedEventClass, imageBitmap);
+                        callMethod(thiz, "onSnapCaptured", captureEvent);
+                    }
                 }
-                //callSuperMethod(thiz, "finish");
             }
         });
         findAndHookMethod("com.snapchat.android.SnapPreviewFragment", lpparam.classLoader, "onCreateView", LayoutInflater.class, ViewGroup.class, Bundle.class, new XC_MethodHook() {
