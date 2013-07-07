@@ -54,11 +54,11 @@ public class ReceiveImageActivity extends Activity {
                 int width = bitmap.getWidth();
                 int height = bitmap.getHeight();
                 Log.d(LOG_TAG, "Original image w x h: " + width + " x " + height);
-                // Portrait images have to be rotated 90 degrees clockwise for Snapchat to be displayed correctly
-                if (height > width) {
-                    Log.d(LOG_TAG, "Portrait image detected, rotating 90 degrees clockwise.");
+                // Landscape images have to be rotated 90 degrees clockwise for Snapchat to be displayed correctly
+                if (width > height) {
+                    Log.d(LOG_TAG, "Landscape image detected, rotating 90 degrees clockwise.");
                     Matrix matrix = new Matrix();
-                    matrix.setRotate(270);
+                    matrix.setRotate(90);
                     bitmap = createBitmap(bitmap, 0, 0, width, height, matrix, true);
                     // resetting width and height
                     width = bitmap.getWidth();
@@ -67,10 +67,9 @@ public class ReceiveImageActivity extends Activity {
 
                 /* Scaling and cropping mayhem
 
-                Snapchat will break if the image sent does not fit into the
-                DisplayMetrics.widthPixels x DisplayMetrics.heightPixels rectangle (Display rectangle)
-                and it will scale the image up if the Display rectangle is larger than the image,
-                ignoring the image's ratio.
+                Snapchat will break if the image is too large and it will scale the image up if the
+                Display rectangle (DisplayMetrics.widthPixels x DisplayMetrics.heightPixels rectangle)
+                is larger than the image.
 
                 So, we sample the image down such that the Display rectangle fits into it and touches one side.
                 Then we crop the picture to that rectangle */
@@ -79,9 +78,9 @@ public class ReceiveImageActivity extends Activity {
                 int dWidth = dm.widthPixels;
                 int dHeight = dm.heightPixels;
                 Log.d(LOG_TAG, "Display metrics w x h: " + dWidth + " x " + dHeight);
-                // DisplayMetrics' values depend on the phone's tilt, so we normalize them to landscape mode
-                if (dHeight > dWidth) {
-                    Log.d(LOG_TAG, "Normalizing display metrics to landscape mode.");
+                // DisplayMetrics' values depend on the phone's tilt, so we normalize them to Portrait mode
+                if (dWidth > dHeight) {
+                    Log.d(LOG_TAG, "Normalizing display metrics to Portrait mode.");
                     int temp = dWidth;
                     dWidth = dHeight;
                     dHeight = temp;
@@ -111,7 +110,6 @@ public class ReceiveImageActivity extends Activity {
                 /// Scaling and cropping finished, ready to pass to Snapchat
 
                 bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, oStream);
-                Log.d(LOG_TAG, "outputStream size: " + oStream.size()/1024 + " kB = " + oStream.size() + " B");
                 byte [] imageData = oStream.toByteArray();
                 int dataLength = imageData.length;
                 Log.d(LOG_TAG, "byte array size: " + dataLength/1024 + " kB = " + dataLength + " B");
