@@ -3,7 +3,7 @@ package net.cantab.stammler.snapshare;
 /**
  ReceiveImageActivity.java created on 6/26/13.
 
- Copyright 2013 Sebastian Stammler
+ Copyright (C) 2013 Sebastian Stammler <stammler@cantab.net>
 
  This file is part of Snapshare.
 
