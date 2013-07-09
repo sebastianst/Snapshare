@@ -16,7 +16,7 @@ The software was created using Android Studio with gradle on an Arch Linux machi
 
 Quick Installation
 ------------------
-*Note: Obviously, you need **root access** on your phone.*
+*Note: Obviously, you need __root access__ on your phone.*
 
 1. Download the Xposed Installer APK from the above XDA thread
 2. Install the app, run it, let it install the framework
