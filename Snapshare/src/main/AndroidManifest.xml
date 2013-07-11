@@ -11,12 +11,17 @@
         <meta-data android:value="true" android:name="xposedmodule"/>
         <meta-data android:value="2.0*" android:name="xposedminversion"/>
         <meta-data android:value="Lets you share arbitrary Images via Snapchat." android:name="xposeddescription"/>
-        <activity android:name=".ReceiveImageActivity"
+        <activity android:name=".ReceiveMediaActivity"
                   android:theme="@android:style/Theme.NoDisplay">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/mp4" />
             </intent-filter>
         </activity>
     </application>

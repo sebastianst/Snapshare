@@ -1,7 +1,7 @@
 package net.cantab.stammler.snapshare;
 
 /**
- ReceiveImageActivity.java created on 6/26/13.
+ ReceiveMediaActivity.java created on 6/26/13.
 
  Copyright (C) 2013 Sebastian Stammler <stammler@cantab.net>
 
@@ -30,21 +30,32 @@ import android.util.Log;
 
 import static net.cantab.stammler.snapshare.Snapshare.LOG_TAG;
 
-public class ReceiveImageActivity extends Activity {
+/**
+ * This Activity has an intent-filter to receive images and videos.
+ *
+ * It basically functions as a wrapper around Snapchat. Upon creation, we double check, that actually
+ * an image or video was passed to it and then call Snapchat's main launcher Activity,
+ * com.snapchat.android.LandingPageActivity with the same intent.
+ *
+ * Now the remaining work is done in some hooked methods of Snapchat. Upon creation of the
+ * LandingPageActivity, the injected code checks if the intent is a share intent and then does the
+ * work necessary to let the image or video be shown.
+ */
+public class ReceiveMediaActivity extends Activity {
     @Override
     public void onCreate (Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Intent intent = getIntent();
         String action = intent.getAction();
         String type = intent.getType();
-        Uri imageUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
-        if (type != null && Intent.ACTION_SEND.equals(action) && type.startsWith("image/")) {
-            if (imageUri == null) {
-                Log.d(LOG_TAG, "Image URI null!");
+        Uri mediaUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+        if (type != null && Intent.ACTION_SEND.equals(action) && (type.startsWith("image/") || type.startsWith("video/"))) {
+            if (mediaUri == null) {
+                Log.d(LOG_TAG, "Media URI null!");
                 return;
             }
-            Log.d(LOG_TAG, "Received Image share of type " + type
-                    + "\nand URI " + imageUri.toString()
+            Log.d(LOG_TAG, "Received Media share of type " + type
+                    + "\nand URI " + mediaUri.toString()
                     + "\nCalling hooked Snapchat with same Intent.");
             intent.setComponent(ComponentName.unflattenFromString("com.snapchat.android/.LandingPageActivity"));
             startActivity(intent);
@@ -53,5 +64,3 @@ public class ReceiveImageActivity extends Activity {
         finish();
     }
 }
-//TODO video sharing:
-// intent.putExtra("videoFile", imageUri.toString()); LATER for video share. should be a file:// string, pointing to a .mp4 file
