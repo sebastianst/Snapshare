@@ -5,6 +5,6 @@
 .gradle/
 local.properties
 
-*/build/
+build/
 
 *.apk
