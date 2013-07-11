@@ -30,6 +30,17 @@ import android.util.Log;
 
 import static net.cantab.stammler.snapshare.Snapshare.LOG_TAG;
 
+/**
+ * This Activity has an intent-filter to receive images and videos.
+ *
+ * It basically functions as a wrapper around Snapchat. Upon creation, we double check, that actually
+ * an image or video was passed to it and then call Snapchat's main launcher Activity,
+ * com.snapchat.android.LandingPageActivity with the same intent.
+ *
+ * Now the remaining work is done in some hooked methods of Snapchat. Upon creation of the
+ * LandingPageActivity, the injected code checks if the intent is a share intent and then does the
+ * work necessary to let the image or video be shown.
+ */
 public class ReceiveMediaActivity extends Activity {
     @Override
     public void onCreate (Bundle savedInstanceState) {

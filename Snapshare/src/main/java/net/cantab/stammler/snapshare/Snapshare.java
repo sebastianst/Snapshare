@@ -56,7 +56,25 @@ import static de.robv.android.xposed.XposedHelpers.newInstance;
 public class Snapshare implements IXposedHookLoadPackage {
     public static final String LOG_TAG = "Snapshare";
 
+    /**
+     * We define pairs of classes and their void methods, which potentially delete video files.
+     * Later, we intercept calls to these, check if we are actually sharing an external video,
+     * instead of one captured with the camera, and prevent deletion in this case.
+     */
+    private static final short CLASS = 0;
+    private static final short METHOD = 1;
+    private static final String [][] VIDEO_DELETE_METHODS = {
+            {"com.snapchat.android.SnapPreviewFragment","deleteVideoFileIfSnapIsVideo"},
+            {"com.snapchat.android.model.SentSnap", "deleteBackingVideoFile"}
+    };
+
+    /**
+     * After creating a SnapCapturedEvent and passing it to onSnapCaptured(), we set the
+     * initializedUri to the current media's Uri, because onCreate() is called again upon phone rotation.
+     * We furthermore set isOwnVideoSnap to true if we are sharing an external video to prevent deletion.
+     */
     private Uri initializedUri;
+    private boolean isOwnVideoSnap = false;
 
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
         if (!lpparam.packageName.equals("com.snapchat.android"))
@@ -64,6 +82,13 @@ public class Snapshare implements IXposedHookLoadPackage {
         else
             XposedBridge.log("Snapshare: Snapchat load detected.");
 
+        final Class SnapCapturedEventClass = Class.forName("com.snapchat.android.util.eventbus.SnapCapturedEvent", true, lpparam.classLoader);
+
+        /**
+         * Here the main work happens. We hook after the onCreate() call of the main Activity
+         * to create a sensible SnapCapturedEvent which is passed to onSnapCaptured(), which causes
+         * Snapchat to load the SnapPreviewFragment, previewing our image or video.
+         */
         findAndHookMethod("com.snapchat.android.LandingPageActivity", lpparam.classLoader, "onCreate", Bundle.class, new XC_MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
@@ -112,14 +137,16 @@ public class Snapshare implements IXposedHookLoadPackage {
                                 height = bitmap.getHeight();
                             }
 
-                        /* Scaling and cropping mayhem
-
-                        Snapchat will break if the image is too large and it will scale the image up if the
-                        Display rectangle (DisplayMetrics.widthPixels x DisplayMetrics.heightPixels rectangle)
-                        is larger than the image.
-
-                        So, we sample the image down such that the Display rectangle fits into it and touches one side.
-                        Then we crop the picture to that rectangle */
+                            /**
+                             * Scaling and cropping mayhem
+                             *
+                             * Snapchat will break if the image is too large and it will scale the image up if the
+                             * Display rectangle (DisplayMetrics.widthPixels x DisplayMetrics.heightPixels rectangle)
+                             * is larger than the image.
+                             *
+                             * So, we sample the image down such that the Display rectangle fits into it and touches one side.
+                             * Then we crop the picture to that rectangle
+                             */
                             DisplayMetrics dm = new DisplayMetrics();
                             ((WindowManager) callSuperMethod(thiz, "getWindowManager")).getDefaultDisplay().getMetrics(dm);
                             int dWidth = dm.widthPixels;
@@ -129,12 +156,13 @@ public class Snapshare implements IXposedHookLoadPackage {
                             if (dWidth > dHeight) {
                                 Log.d(LOG_TAG, "Normalizing display metrics to Portrait mode.");
                                 int temp = dWidth;
+                                //noinspection SuspiciousNameCombination
                                 dWidth = dHeight;
                                 dHeight = temp;
                             }
-                        /* If the image properly covers the Display rectangle, we mark it as a "large" image
-                        and are going to scale it down. We make this distinction because we don't wanna
-                        scale the image up if it is smaller than the Display rectangle. */
+                            /* If the image properly covers the Display rectangle, we mark it as a "large" image
+                            and are going to scale it down. We make this distinction because we don't wanna
+                            scale the image up if it is smaller than the Display rectangle. */
                             boolean largeImage = ((width > dWidth) & (height > dHeight));
                             Log.d(LOG_TAG, "Large image? " + largeImage);
                             int imageToDisplayRatio = width * dHeight - height * dWidth;
@@ -156,14 +184,13 @@ public class Snapshare implements IXposedHookLoadPackage {
                             }
                             /// Scaling and cropping finished, ready to let Snapchat display our result
 
-                        /* We fake a SnapCapturedEvent with our bitmap and call the onSnapCaptured
-                        * method with this fake to let Snapchat display the image in the editor
-                        * as if the image was just taken with the camera. */
-                            Class SnapCapturedEventClass = Class.forName("com.snapchat.android.util.eventbus.SnapCapturedEvent", true, thiz.getClass().getClassLoader());
+                            /** We fake a SnapCapturedEvent with our bitmap and call the onSnapCaptured
+                             * method with this fake to let Snapchat display the image in the editor
+                             * as if the image was just taken with the camera. */
                             Object captureEvent = newInstance(SnapCapturedEventClass, bitmap);
                             callMethod(thiz, "onSnapCaptured", captureEvent);
                         } catch (FileNotFoundException e) {
-                            Log.e(LOG_TAG, "File not found!", e);
+                            Log.w(LOG_TAG, "File not found!", e);
                         } catch (IOException e) {
                             Log.e(LOG_TAG, "IO Error!", e);
                         }
@@ -173,23 +200,56 @@ public class Snapshare implements IXposedHookLoadPackage {
                         * so we have to convert the URI */
                         String [] proj = {MediaStore.Images.Media.DATA};
                         Cursor cursor = thizContentResolver.query(mediaUri, proj, null, null, null);
-                        int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
-                        cursor.moveToFirst();
-                        String filePath = cursor.getString(column_index);
-                        Log.d(LOG_TAG, "Converted content URI " + mediaUri.toString() + " to file path " + filePath);
-                        cursor.close();
-                        File videoFile = new File(filePath);
-                         /* We fake a SnapCapturedEvent with the video URI and call the onSnapCaptured
-                        * method with this fake to let Snapchat display the video
-                        * as if the video was just taken with the camera. */
-                        Class SnapCapturedEventClass = Class.forName("com.snapchat.android.util.eventbus.SnapCapturedEvent", true, thiz.getClass().getClassLoader());
-                        Object captureEvent = newInstance(SnapCapturedEventClass, Uri.fromFile(videoFile));
-                        callMethod(thiz, "onSnapCaptured", captureEvent);
+                        if (cursor != null) {
+                            int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+                            cursor.moveToFirst();
+                            String filePath = cursor.getString(column_index);
+                            Log.d(LOG_TAG, "Converted content URI " + mediaUri.toString() + " to file path " + filePath);
+                            cursor.close();
+                            File videoFile = new File(filePath);
+                            /** We fake a SnapCapturedEvent with the video URI and call the onSnapCaptured
+                            * method with this fake to let Snapchat display the video
+                            * as if the video was just taken with the camera. */
+                            Object captureEvent = newInstance(SnapCapturedEventClass, Uri.fromFile(videoFile));
+                            callMethod(thiz, "onSnapCaptured", captureEvent);
+                            // set marker that we inject a video into Snapchat, so it doesn't get deleted
+                            isOwnVideoSnap = true;
+                        } else {
+                            Log.w(LOG_TAG, "Couldn't resolve content URI to file path!");
+                        }
                     }
                     /* Finally the image or video is marked as initialized to prevent reinitialisation of
                      * the SnapCapturedEvent in case of a screen rotation (because onCreate() is then called) */
                     initializedUri = mediaUri;
                 }
+                else {
+                    Log.d(LOG_TAG, "Normal call of Snapchat.");
+                    isOwnVideoSnap = false;
+                    initializedUri = null;
+                }
+            }
+        });
+
+        /**
+         * We reset the local variables which indicate, that the image or video comes from Snapshare.
+         *
+         * If we change to the camera after we have shared an image or video with Snapshare,
+         * onCreate() of the main Activity doesn't get called. Thus, Snapshare will still prevent
+         * Snapchat from deleting sent videos (as isOwnVideoSnap was set true before), but it should
+         * do so with videos recorded within Snapchat.
+         *
+         * Also, if we loaded the same image with Snapshare. after such an action, the
+         * initializedUri would still point to it and the above code would not run, so we reset this
+         * parameter as well.
+         *
+         * That's also the reason we have to set the initializedUri to the actual uri and
+         * isOwnVideoSnap to true *after* the calls to onSnapCaptured() above.
+         */
+        findAndHookMethod("com.snapchat.android.LandingPageActivity", lpparam.classLoader, "onSnapCaptured", SnapCapturedEventClass, new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                isOwnVideoSnap = false;
+                initializedUri = null;
             }
         });
 
@@ -203,7 +263,7 @@ public class Snapshare implements IXposedHookLoadPackage {
                 Intent intent = curActivity.getIntent();
                 Log.d(LOG_TAG, "Fr> Intent type: " + intent.getType());
                 if (getBooleanField(thiz, "mIsVideoSnap")) {
-                    Log.d(LOG_TAG, "Previewing a video.");
+                    Log.d(LOG_TAG, "Fr> Previewing a video.");
                 }
                 else {
                     Bitmap bitmap = (Bitmap) getObjectField(thiz, "mImageBitmap");
@@ -213,20 +273,28 @@ public class Snapshare implements IXposedHookLoadPackage {
                 }
             }
         });
-        findAndHookMethod("com.snapchat.android.util.SnapMediaUtils", lpparam.classLoader, "getDataFromFile", String.class, new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                String uriString = (String) param.args[0];
-                Log.d(LOG_TAG, "SMU> URI: " + uriString);
-                if ((uriString).startsWith("content:/")) {
-                    Log.d(LOG_TAG, "SMU> Converting content URI " + uriString + " to file URI");
-                    //TODO convert content string to file string
+
+        /**
+         * We could just copy the video into the temporary video directory of Snapchat and then don't
+         * care that Snapchat is deleting videos after sending them. I found it, however, more fancy
+         * to intercept all methods that delete the video files, in case we are sending our own video.
+         * We probably don't want them to be deleted ;)
+         */
+        for (String [] deleteClassMethod : VIDEO_DELETE_METHODS)
+            findAndHookMethod(deleteClassMethod[CLASS], lpparam.classLoader, deleteClassMethod[METHOD], new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    Log.d(LOG_TAG, param.thisObject.getClass().getName() + "#" + param.method.getName() + " method called.");
+                    if (isOwnVideoSnap) {
+                        Log.d(LOG_TAG, "Prevent Snapchat from deleting our video.");
+                        param.setResult(null);
+                    } else
+                        Log.d(LOG_TAG, "Allow Snapchat to delete the video file.");
                 }
-            }
-        });
+            });
     }
 
-    /*
+    /**
      * callSuperMethod()
      *
      * XposedHelpers.callMethod() cannot call methods of the super class of an object, because it
