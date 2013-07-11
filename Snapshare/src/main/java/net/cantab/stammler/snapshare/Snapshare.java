@@ -24,6 +24,7 @@ package net.cantab.stammler.snapshare;
 import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.Intent;
+import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
 import android.net.Uri;
@@ -35,6 +36,7 @@ import android.view.LayoutInflater;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -81,6 +83,7 @@ public class Snapshare implements IXposedHookLoadPackage {
                         Log.d(LOG_TAG, "SnapCapturedEvent already created, exit onCreate()");
                         return;
                     }
+                    ContentResolver thizContentResolver = (ContentResolver) callSuperMethod(thiz, "getContentResolver");
                     if (type.startsWith("image/")) {
                         /* We check if the current image got already initialized and should exit instead
                         of doing the bitmap initialization again. This check is necessary
@@ -94,7 +97,7 @@ public class Snapshare implements IXposedHookLoadPackage {
                          Log.v("Snapshare", "Image size: " + byteSize/1024 + " kB");*/
                         /*TODO use BitmapFactory with inSampleSize magic to avoid using too much memory,
                          see http://developer.android.com/training/displaying-bitmaps/load-bitmap.html#load-bitmap */
-                            Bitmap bitmap = MediaStore.Images.Media.getBitmap((ContentResolver) callSuperMethod(thiz, "getContentResolver"), mediaUri);
+                            Bitmap bitmap = MediaStore.Images.Media.getBitmap(thizContentResolver, mediaUri);
                             int width = bitmap.getWidth();
                             int height = bitmap.getHeight();
                             Log.d(LOG_TAG, "Original image w x h: " + width + " x " + height);
@@ -166,15 +169,25 @@ public class Snapshare implements IXposedHookLoadPackage {
                         }
                     }
                     else if (type.startsWith("video/")) {
-                        /* We fake a SnapCapturedEvent with the video URI and call the onSnapCaptured
+                        /* Snapchat expects the video URI to be in the file:// format, not content://
+                        * so we have to convert the URI */
+                        String [] proj = {MediaStore.Images.Media.DATA};
+                        Cursor cursor = thizContentResolver.query(mediaUri, proj, null, null, null);
+                        int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+                        cursor.moveToFirst();
+                        String filePath = cursor.getString(column_index);
+                        Log.d(LOG_TAG, "Converted content URI " + mediaUri.toString() + " to file path " + filePath);
+                        cursor.close();
+                        File videoFile = new File(filePath);
+                         /* We fake a SnapCapturedEvent with the video URI and call the onSnapCaptured
                         * method with this fake to let Snapchat display the video
                         * as if the video was just taken with the camera. */
                         Class SnapCapturedEventClass = Class.forName("com.snapchat.android.util.eventbus.SnapCapturedEvent", true, thiz.getClass().getClassLoader());
-                        Object captureEvent = newInstance(SnapCapturedEventClass, mediaUri);
+                        Object captureEvent = newInstance(SnapCapturedEventClass, Uri.fromFile(videoFile));
                         callMethod(thiz, "onSnapCaptured", captureEvent);
                     }
-                    /* Finally the image is marked as initialized to prevent re-calculation of
-                     * the bitmap in case of a screen rotation (because onCreate() is then called) */
+                    /* Finally the image or video is marked as initialized to prevent reinitialisation of
+                     * the SnapCapturedEvent in case of a screen rotation (because onCreate() is then called) */
                     initializedUri = mediaUri;
                 }
             }
@@ -204,6 +217,7 @@ public class Snapshare implements IXposedHookLoadPackage {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                 String uriString = (String) param.args[0];
+                Log.d(LOG_TAG, "SMU> URI: " + uriString);
                 if ((uriString).startsWith("content:/")) {
                     Log.d(LOG_TAG, "SMU> Converting content URI " + uriString + " to file URI");
                     //TODO convert content string to file string
