@@ -49,40 +49,56 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 import static android.graphics.Bitmap.createBitmap;
 import static de.robv.android.xposed.XposedHelpers.callMethod;
 import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
+import static de.robv.android.xposed.XposedHelpers.findClass;
 import static de.robv.android.xposed.XposedHelpers.getBooleanField;
 import static de.robv.android.xposed.XposedHelpers.getObjectField;
 import static de.robv.android.xposed.XposedHelpers.newInstance;
+import static de.robv.android.xposed.XposedHelpers.setObjectField;
+import static de.robv.android.xposed.XposedHelpers.setStaticBooleanField;
 
 public class Snapshare implements IXposedHookLoadPackage {
+    // Debugging settings
     public static final String LOG_TAG = "Snapshare";
-
-    /**
-     * We define pairs of classes and their void methods, which potentially delete video files.
-     * Later, we intercept calls to these, check if we are actually sharing an external video,
-     * instead of one captured with the camera, and prevent deletion in this case.
-     */
-    private static final short CLASS = 0;
-    private static final short METHOD = 1;
-    private static final String [][] VIDEO_DELETE_METHODS = {
-            {"com.snapchat.android.SnapPreviewFragment","deleteVideoFileIfSnapIsVideo"},
-            {"com.snapchat.android.model.SentSnap", "deleteBackingVideoFile"}
-    };
-
-    /**
-     * After creating a SnapCapturedEvent and passing it to onSnapCaptured(), we set the
-     * initializedUri to the current media's Uri, because onCreate() is called again upon phone rotation.
-     * We furthermore set isOwnVideoSnap to true if we are sharing an external video to prevent deletion.
-     */
+    public static final boolean DEBUG = true;
+    /** Enable Snapchat's internal debugging mode? */
+    public static final boolean TIMBER = false;
+    /** Only if a video file path contains this pattern, Snapchat is allowed to delete the video,
+     * because then it is a video file recored by Snapchat itself and not a shared one. */
+    public static final String VIDEO_CACHE_PATTERN = "/com.snapchat.android/cache/sending_video_snaps/snapchat_video";
+    /** After calling initSnapPreviewFragment() below, we set the
+     * initializedUri to the current media's Uri to prevent another call of onCreate() to initialize
+     * the media again. E.g. onCreate() is called again if the phone is rotated. */
     private Uri initializedUri;
-    private boolean isOwnVideoSnap = false;
 
-    public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
+    public void handleLoadPackage(final XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
         if (!lpparam.packageName.equals("com.snapchat.android"))
             return;
         else
             XposedBridge.log("Snapshare: Snapchat load detected.");
+        // Timber is Snapchat's internal debugging class. By default, it is disabled in the upstream
+        // Snapchat version. We can enable it by settings its static member DEBUG to true.
+        if (TIMBER) {
+            Log.d(LOG_TAG, "Enabling Snapchat Timber debugging messages.");
+            setStaticBooleanField(findClass("com.snapchat.android.Timber", lpparam.classLoader), "DEBUG", true);
+            // The Snapchat devs screwed up their own debugging. Without this hook, Snapchat force
+            // closes upon launching because erroneous String.format() calls are made.
+            findAndHookMethod("com.snapchat.android.Timber", lpparam.classLoader, "d", String.class, Object[].class, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    String str = (String) param.args[0];
+                    Object [] obja = (Object []) param.args[1];
+                    try {
+                        String msg = String.format(str, obja);
+                        Log.d(LOG_TAG, "Timber: " + msg);
+                    } catch(java.util.IllegalFormatConversionException e) {
+                        Log.w(LOG_TAG, "Timber tried to format: " + str + " -- Snapchat screwed up their own debugging - doh!");
+                        param.setResult(null);
+                    }
+                }
+            });
+        }
 
-        final Class SnapCapturedEventClass = Class.forName("com.snapchat.android.util.eventbus.SnapCapturedEvent", true, lpparam.classLoader);
+        final Class SnapCapturedEventClass = findClass("com.snapchat.android.util.eventbus.SnapCapturedEvent", lpparam.classLoader);
 
         /**
          * Here the main work happens. We hook after the onCreate() call of the main Activity
@@ -101,18 +117,20 @@ public class Snapshare implements IXposedHookLoadPackage {
                 // Check if this is a normal launch of Snapchat or actually called by Snapshare
                 if (type != null && Intent.ACTION_SEND.equals(action)) {
                     Uri mediaUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+                    // Check for bogus call
                     if (mediaUri == null) {
                         return;
                     }
+                    /* We check if the current media got already initialized and should exit instead
+                     * of doing the media initialization again. This check is necessary
+                     * because onCreate() is also called if the phone is just rotated. */
                     if (initializedUri == mediaUri) {
-                        Log.d(LOG_TAG, "SnapCapturedEvent already created, exit onCreate()");
+                        Log.d(LOG_TAG, "Media already initialized, exit onCreate() hook");
                         return;
                     }
                     ContentResolver thizContentResolver = (ContentResolver) callSuperMethod(thiz, "getContentResolver");
                     if (type.startsWith("image/")) {
-                        /* We check if the current image got already initialized and should exit instead
-                        of doing the bitmap initialization again. This check is necessary
-                        because onCreate() is also called if the phone is just rotated. */
+
                         //InputStream iStream;
                         try {
                         /*iStream = getContentResolver().openInputStream(mediaUri);
@@ -184,11 +202,8 @@ public class Snapshare implements IXposedHookLoadPackage {
                             }
                             /// Scaling and cropping finished, ready to let Snapchat display our result
 
-                            /** We fake a SnapCapturedEvent with our bitmap and call the onSnapCaptured
-                             * method with this fake to let Snapchat display the image in the editor
-                             * as if the image was just taken with the camera. */
-                            Object captureEvent = newInstance(SnapCapturedEventClass, bitmap);
-                            callMethod(thiz, "onSnapCaptured", captureEvent);
+                            // Make Snapchat show the image
+                            initSnapPreviewFragment(thiz, bitmap);
                         } catch (FileNotFoundException e) {
                             Log.w(LOG_TAG, "File not found!", e);
                         } catch (IOException e) {
@@ -196,8 +211,8 @@ public class Snapshare implements IXposedHookLoadPackage {
                         }
                     }
                     else if (type.startsWith("video/")) {
-                        /* Snapchat expects the video URI to be in the file:// format, not content://
-                        * so we have to convert the URI */
+                        // Snapchat expects the video URI to be in the file:// format, not content://
+                        // so we have to convert the URI
                         String [] proj = {MediaStore.Images.Media.DATA};
                         Cursor cursor = thizContentResolver.query(mediaUri, proj, null, null, null);
                         if (cursor != null) {
@@ -207,100 +222,173 @@ public class Snapshare implements IXposedHookLoadPackage {
                             Log.d(LOG_TAG, "Converted content URI " + mediaUri.toString() + " to file path " + filePath);
                             cursor.close();
                             File videoFile = new File(filePath);
-                            /** We fake a SnapCapturedEvent with the video URI and call the onSnapCaptured
-                            * method with this fake to let Snapchat display the video
-                            * as if the video was just taken with the camera. */
-                            Object captureEvent = newInstance(SnapCapturedEventClass, Uri.fromFile(videoFile));
-                            callMethod(thiz, "onSnapCaptured", captureEvent);
-                            // set marker that we inject a video into Snapchat, so it doesn't get deleted
-                            isOwnVideoSnap = true;
+                            // Make Snapchat show the video
+                            initSnapPreviewFragment(thiz, Uri.fromFile(videoFile));
                         } else {
                             Log.w(LOG_TAG, "Couldn't resolve content URI to file path!");
                         }
                     }
                     /* Finally the image or video is marked as initialized to prevent reinitialisation of
-                     * the SnapCapturedEvent in case of a screen rotation (because onCreate() is then called) */
+                     * the SnapCapturedEvent in case of a screen rotation (because onCreate() is then called).
+                     * This way, it is made sure that a shared image or media is only initialized and then
+                     * showed in a SnapPreviewFragment once.
+                     * Also, if Snapchat is used normally after being launched by Snapshare, a screen rotation
+                     * while in the SnapPreviewFragment, would draw the shared image or video instead of showing
+                     * what has just been recorded by the camera. */
                     initializedUri = mediaUri;
                 }
                 else {
                     Log.d(LOG_TAG, "Normal call of Snapchat.");
-                    isOwnVideoSnap = false;
                     initializedUri = null;
                 }
             }
+
+            /** Makes Snapchat show the image or video.
+             * The method first creates a SnapCapturedEvent and then displays the SnapPreviewFragment.
+             *
+             * @param thiz The LandingPageActivity
+             * @param media Either the Bitmap of the image or the Uri of the video
+             */
+            private void initSnapPreviewFragment(Object thiz, Object media) {
+                Log.d(LOG_TAG, "Initializing SnapPreviewFragment");
+                /* We put a SnapCapturedEvent, representing our image or video, into the mSnapCapturedEvent
+                 * member variable. Then we initialize the SnapPreviewFragment which will automatically
+                 * pull the SnapCapturedEvent from the LandingPageActivity. */
+                Object snapCaptureEvent = newInstance(SnapCapturedEventClass, media);
+                setObjectField(thiz, "mSnapCapturedEvent", snapCaptureEvent);
+                /* The following smali code is implemented below to start the SnapPreviewFragment.
+                 * Taken from the onSnapCapturedEvent method of the LandingPageActivity class. (Snapchat v3.0.4)
+                 * Unfortunately, it is not possible to use the existing code for this, because
+                 * the onSnapCapturedEvent method has to be called first with a trivial
+                 * SnapCapturedEvent (trivial meaning with an empty Bitmap) for the SnapPreviewFragment
+                 * to be initialized. But then it also tries to set the CameraView invisible,
+                 * which results in a NullPointerException, as the Camera is not even initialized here.
+                 * See the full smali code for details.
+
+                 .line 741
+                 new-instance v0, Lcom/snapchat/android/SnapPreviewFragment;
+
+                 invoke-direct {v0}, Lcom/snapchat/android/SnapPreviewFragment;-><init>()V
+
+                 iput-object v0, p0, Lcom/snapchat/android/LandingPageActivity;->mSnapPreviewFragment:Lcom/snapchat/android/SnapPreviewFragment;
+
+                 .line 742
+                 iget-object v0, p0, Lcom/snapchat/android/LandingPageActivity;->mSnapPreviewFragment:Lcom/snapchat/android/SnapPreviewFragment;
+
+                 const-string v1, "preview"
+
+                 invoke-direct {p0, v0, v1}, Lcom/snapchat/android/LandingPageActivity;->startFragment(Lcom/snapchat/android/util/fragment/AccessibilityFragment;Ljava/lang/String;)V
+                 */
+                Object snapPreviewFragment = newInstance(findClass("com.snapchat.android.SnapPreviewFragment", lpparam.classLoader));
+                setObjectField(thiz, "mSnapPreviewFragment", snapPreviewFragment);
+                callMethod(thiz, "startFragment", snapPreviewFragment, "preview");
+            }
         });
 
-        /**
-         * We reset the local variables which indicate, that the image or video comes from Snapshare.
-         *
-         * If we change to the camera after we have shared an image or video with Snapshare,
-         * onCreate() of the main Activity doesn't get called. Thus, Snapshare will still prevent
-         * Snapchat from deleting sent videos (as isOwnVideoSnap was set true before), but it should
-         * do so with videos recorded within Snapchat.
-         *
-         * Also, if we loaded the same image with Snapshare. after such an action, the
-         * initializedUri would still point to it and the above code would not run, so we reset this
-         * parameter as well.
-         *
-         * That's also the reason we have to set the initializedUri to the actual uri and
-         * isOwnVideoSnap to true *after* the calls to onSnapCaptured() above.
-         */
-        findAndHookMethod("com.snapchat.android.LandingPageActivity", lpparam.classLoader, "onSnapCaptured", SnapCapturedEventClass, new XC_MethodHook() {
+        // This is a pure debugging hook.
+        if (DEBUG)
+        findAndHookMethod("com.snapchat.android.LandingPageActivity", lpparam.classLoader, "onSnapCapturedEvent", SnapCapturedEventClass, new XC_MethodHook() {
             @Override
-            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                isOwnVideoSnap = false;
-                initializedUri = null;
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                boolean b = (Boolean) callMethod(param.thisObject, "isSnapPreviewFragmentShowing");
+                Bitmap bitmap = (Bitmap) callMethod(param.args[0], "getPhotoBitmap");
+                Log.d(LOG_TAG, "isSnapPreviewFragmentShowing? " + b + "; snapCapturedEvent's bitmap trivial? " + (bitmap == null));
             }
         });
 
         // This is a pure debugging hook to print some information about the intent and image.
+        if (DEBUG)
         findAndHookMethod("com.snapchat.android.SnapPreviewFragment", lpparam.classLoader, "onCreateView", LayoutInflater.class, ViewGroup.class, Bundle.class, new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                Log.d(LOG_TAG, "Fr#onCreateView> mSnapCapturedEvent null? " + (getObjectField(param.thisObject, "mSnapCapturedEvent") == null));
+                Object sce = callMethod(callSuperMethod(param.thisObject, "getActivity"), "getSnapCapturedEvent");
+                Log.d(LOG_TAG, "Fr#onCreateView> getSnapCapturedEvent returns null? " + (sce == null));
+            }
+
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 Object thiz = param.thisObject;
                 Activity curActivity = (Activity) callSuperMethod(thiz, "getActivity");
-                Log.d(LOG_TAG, "Fr> Current Activity: " + curActivity.getLocalClassName());
+                Log.d(LOG_TAG, "Fr#onCreateView> Current Activity: " + curActivity.getLocalClassName());
                 Intent intent = curActivity.getIntent();
-                Log.d(LOG_TAG, "Fr> Intent type: " + intent.getType());
+                Log.d(LOG_TAG, "Fr#onCreateView> Intent type: " + intent.getType());
                 if (getBooleanField(thiz, "mIsVideoSnap")) {
-                    Log.d(LOG_TAG, "Fr> Previewing a video.");
+                    Log.d(LOG_TAG, "Fr#onCreateView> Previewing a video.");
                 }
                 else {
                     Bitmap bitmap = (Bitmap) getObjectField(thiz, "mImageBitmap");
-                    Log.d(LOG_TAG, "Fr> Image Width x Height: " + bitmap.getWidth() + " x " + bitmap.getHeight());
-                    DisplayMetrics dm = (DisplayMetrics) getObjectField(thiz, "mDisplayMetrics");
-                    Log.d(LOG_TAG, "Fr> SnapPreviewActivity Display Metrics w x h: " + dm.widthPixels + " x " + dm.heightPixels);
+                    Log.d(LOG_TAG, "Fr#onCreateView> mImageBitmap null? " + (bitmap == null));
+                    if (bitmap != null) {
+                        Log.d(LOG_TAG, "Fr#onCreateView> Image Width x Height: " + bitmap.getWidth() + " x " + bitmap.getHeight());
+                        DisplayMetrics dm = (DisplayMetrics) getObjectField(thiz, "mDisplayMetrics");
+                        Log.d(LOG_TAG, "Fr#onCreateView> SnapPreviewActivity Display Metrics w x h: " + dm.widthPixels + " x " + dm.heightPixels);
+                    }
                 }
             }
         });
 
-        /**
-         * We could just copy the video into the temporary video directory of Snapchat and then don't
+        /** The following two hooks prevent Snapchat from deleting videos shared with Snapshare.
+         * It does so by checking whether the path of the video file to be deleted contains the
+         * VIDEO_CACHE_PATTERN, which then would imply that the video file resides in the Snapchat
+         * cache and can thus be deleted. Otherwise, Snapchat is prevented from deleting the file.
+         *
+         * We could just copy the video into the temporary video cache of Snapchat and then don't
          * care that Snapchat is deleting videos after sending them. I found it, however, more fancy
-         * to intercept all methods that delete the video files, in case we are sending our own video.
-         * We probably don't want them to be deleted ;)
+         * to intercept all methods that delete the video files, in case we are sending our own video. ;)
          */
-        for (String [] deleteClassMethod : VIDEO_DELETE_METHODS)
-            findAndHookMethod(deleteClassMethod[CLASS], lpparam.classLoader, deleteClassMethod[METHOD], new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                    Log.d(LOG_TAG, param.thisObject.getClass().getName() + "#" + param.method.getName() + " method called.");
-                    if (isOwnVideoSnap) {
-                        Log.d(LOG_TAG, "Prevent Snapchat from deleting our video.");
-                        param.setResult(null);
-                    } else
-                        Log.d(LOG_TAG, "Allow Snapchat to delete the video file.");
+        findAndHookMethod("com.snapchat.android.model.SentSnap", lpparam.classLoader, "deleteBackingVideoFile", new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                String videoPath = (String) getObjectField(param.thisObject, "mSnapUriString");
+                String logMsg;
+                if (videoPath.contains(VIDEO_CACHE_PATTERN)) {
+                    logMsg = "SS#deleteBackingVideoFile> Allow Snapchat to delete own cached video file ";
+                } else {
+                    param.setResult(null);
+                    logMsg = "SS#deleteBackingVideoFile> Prevented Snapchat from deleting our video file ";
                 }
-            });
+                Log.d(LOG_TAG, logMsg + videoPath);
+            }
+        });
+
+        findAndHookMethod("com.snapchat.android.SnapPreviewFragment", lpparam.classLoader, "onDestroy", new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                Object thiz = param.thisObject;
+                Uri videoUri = (Uri) getObjectField(thiz, "mVideoUri");
+                if (videoUri != null) {
+                    String videoPath = videoUri.getPath();
+                    String logMsg;
+                    if (videoPath.contains(VIDEO_CACHE_PATTERN)) {
+                        logMsg = "Fr#onDestroy> Allow Snapchat to delete own cached video file ";
+                    } else {
+                        // We create a dummy file that Snapchat can delete instead of our video, so that
+                        // onDestroy can run normally.
+                        File deleteMe = File.createTempFile("delete", "me");
+                        setObjectField(thiz, "mVideoUri", Uri.fromFile(deleteMe));
+                        logMsg = "Fr#onDestroy> Prevented Snapchat from deleting our video file ";
+                    }
+                    Log.d(LOG_TAG, logMsg + videoPath);
+                }
+                Log.d(LOG_TAG, "Fr#onDestroy> Called");
+            }
+        });
     }
 
-    /**
-     * callSuperMethod()
+    /** {@code XposedHelpers.callMethod()} cannot call methods of the super class of an object, because it
+     * uses {@code getDeclaredMethods()}. So we have to implement this little helper, which should work
+     * similar to {@code }callMethod()}. Furthermore, the exceptions from getMethod() are passed on.
+     * <p>
+     * At the moment, only argument-free methods supported (only case needed here). After a discussion
+     * with the Xposed author it looks as if the functionality to call super methods will be implemented
+     * in {@code XposedHelpers.callMethod()} in a future release.
      *
-     * XposedHelpers.callMethod() cannot call methods of the super class of an object, because it
-     * uses getDeclaredMethods(). So we have to implement this little helper, which should work
-     * similar to callMethod(). Furthermore, the exceptions from getMethod() are passed on.
-     * See http://forum.xda-developers.com/showpost.php?p=42598280&postcount=1753
+     * @param obj Object whose method should be called
+     * @param methodName String representing the name of the argument-free method to be called
+     * @return The object that the method call returns
+     * @see <a href="http://forum.xda-developers.com/showpost.php?p=42598280&postcount=1753">
+     *     Discussion about calls to super methods in Xposed's XDA thread</a>
      */
     private Object callSuperMethod(Object obj, String methodName) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
         return obj.getClass().getMethod(methodName).invoke(obj);
