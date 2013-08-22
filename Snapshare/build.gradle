@@ -9,11 +9,11 @@ buildscript {
 apply plugin: 'android'
 
 android {
-    compileSdkVersion 'rovo89:Xposed Bridge API:17'
-    buildToolsVersion "17.0.0"
+    compileSdkVersion 'rovo89:Xposed Bridge API:18'
+    buildToolsVersion "18.0.1"
 
     defaultConfig {
         minSdkVersion 15
-        targetSdkVersion 17
+        targetSdkVersion 18
     }
 }
