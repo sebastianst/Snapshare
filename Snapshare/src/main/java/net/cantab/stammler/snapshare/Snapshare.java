@@ -59,7 +59,7 @@ import static de.robv.android.xposed.XposedHelpers.setStaticBooleanField;
 public class Snapshare implements IXposedHookLoadPackage {
     // Debugging settings
     public static final String LOG_TAG = "Snapshare";
-    public static final boolean DEBUG = true;
+    public static final boolean DEBUG = false;
     /** Enable Snapchat's internal debugging mode? */
     public static final boolean TIMBER = false;
     /** Only if a video file path contains this pattern, Snapchat is allowed to delete the video,
@@ -105,7 +105,15 @@ public class Snapshare implements IXposedHookLoadPackage {
          * to create a sensible SnapCapturedEvent which is passed to onSnapCaptured(), which causes
          * Snapchat to load the SnapPreviewFragment, previewing our image or video.
          */
-        findAndHookMethod("com.snapchat.android.LandingPageActivity", lpparam.classLoader, "onCreate", Bundle.class, new XC_MethodHook() {
+         /* Since the new version, for some reason this exact method doesn't work anymore. The following
+          * is a temporary fix just to get it working again. In the future it will be looked at to preserve the original
+          * functionality.
+          *
+          * What happens now: we hook the onSnapCapturedEvent() and replace the captured data with our own. This solves
+          * the issue of the uninitialised preview.
+          * NOTE: I haven't tested this for video yet!
+          */
+        findAndHookMethod("com.snapchat.android.LandingPageActivity", lpparam.classLoader, "onSnapCapturedEvent", SnapCapturedEventClass, new XC_MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 Object thiz = param.thisObject;
@@ -279,9 +287,12 @@ public class Snapshare implements IXposedHookLoadPackage {
 
                  invoke-direct {p0, v0, v1}, Lcom/snapchat/android/LandingPageActivity;->startFragment(Lcom/snapchat/android/util/fragment/AccessibilityFragment;Ljava/lang/String;)V
                  */
+                 /* no longer need this as part of the hack, eventually go back to this after figuring out what the hell is going on 
+                 
                 Object snapPreviewFragment = newInstance(findClass("com.snapchat.android.SnapPreviewFragment", lpparam.classLoader));
-                setObjectField(thiz, "mSnapPreviewFragment", snapPreviewFragment);
-                callMethod(thiz, "startFragment", snapPreviewFragment, "preview");
+               // setObjectField(thiz, "mSnapPreviewFragment", snapPreviewFragment); // no longer in 4.0.20
+                callMethod(thiz, "startFragment", snapPreviewFragment, "PreviewFragment"); // new String
+                */
             }
         });
 
