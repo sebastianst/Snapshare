@@ -3,6 +3,8 @@ Snapshare
 Introduction
 ------------
 
+Apologies for the different signature, I moved the project over to my development machine.
+
 __PLEASE NOTE:__ *For the moment, until I properly explore snapchat, the functionality is slightly different. When you load your picture in, you are required to take a dummy photo (just hit the snap button). Your image should appear. I have not tested for videos yet.*
 
 This programme lets you share any image via Snapchat, not only pictures you take with the camera
