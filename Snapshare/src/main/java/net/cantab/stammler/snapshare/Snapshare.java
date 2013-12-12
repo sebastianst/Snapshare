@@ -41,6 +41,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 
+import com.amcgavin.snapshare.Media;
+
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -55,11 +57,12 @@ import static de.robv.android.xposed.XposedHelpers.getObjectField;
 import static de.robv.android.xposed.XposedHelpers.newInstance;
 import static de.robv.android.xposed.XposedHelpers.setObjectField;
 import static de.robv.android.xposed.XposedHelpers.setStaticBooleanField;
+import static de.robv.android.xposed.XposedHelpers.callStaticMethod;
 
 public class Snapshare implements IXposedHookLoadPackage {
     // Debugging settings
     public static final String LOG_TAG = "Snapshare";
-    public static final boolean DEBUG = false;
+    public static final boolean DEBUG = true;
     /** Enable Snapchat's internal debugging mode? */
     public static final boolean TIMBER = false;
     /** Only if a video file path contains this pattern, Snapchat is allowed to delete the video,
@@ -99,21 +102,13 @@ public class Snapshare implements IXposedHookLoadPackage {
         }
 
         final Class SnapCapturedEventClass = findClass("com.snapchat.android.util.eventbus.SnapCapturedEvent", lpparam.classLoader);
+        final Media media = new Media(); // a place to store the media
 
         /**
          * Here the main work happens. We hook after the onCreate() call of the main Activity
-         * to create a sensible SnapCapturedEvent which is passed to onSnapCaptured(), which causes
-         * Snapchat to load the SnapPreviewFragment, previewing our image or video.
+         * to create a sensible media object.
          */
-         /* Since the new version, for some reason this exact method doesn't work anymore. The following
-          * is a temporary fix just to get it working again. In the future it will be looked at to preserve the original
-          * functionality.
-          *
-          * What happens now: we hook the onSnapCapturedEvent() and replace the captured data with our own. This solves
-          * the issue of the uninitialised preview.
-          * NOTE: I haven't tested this for video yet!
-          */
-        findAndHookMethod("com.snapchat.android.LandingPageActivity", lpparam.classLoader, "onSnapCapturedEvent", SnapCapturedEventClass, new XC_MethodHook() {
+        findAndHookMethod("com.snapchat.android.LandingPageActivity", lpparam.classLoader, "onCreate", Bundle.class, new XC_MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 Object thiz = param.thisObject;
@@ -141,12 +136,12 @@ public class Snapshare implements IXposedHookLoadPackage {
 
                         //InputStream iStream;
                         try {
-                        /*iStream = getContentResolver().openInputStream(mediaUri);
+                            /*iStream = getContentResolver().openInputStream(mediaUri);
                          oStream = new ByteArrayOutputStream(iStream.available());
                          Log.d("Snapshare", "iStream.available(): " + iStream.available());
                          int byteSize = IOUtils.copy(iStream, oStream);
                          Log.v("Snapshare", "Image size: " + byteSize/1024 + " kB");*/
-                        /*TODO use BitmapFactory with inSampleSize magic to avoid using too much memory,
+                            /*TODO use BitmapFactory with inSampleSize magic to avoid using too much memory,
                          see http://developer.android.com/training/displaying-bitmaps/load-bitmap.html#load-bitmap */
                             Bitmap bitmap = MediaStore.Images.Media.getBitmap(thizContentResolver, mediaUri);
                             int width = bitmap.getWidth();
@@ -211,7 +206,7 @@ public class Snapshare implements IXposedHookLoadPackage {
                             /// Scaling and cropping finished, ready to let Snapchat display our result
 
                             // Make Snapchat show the image
-                            initSnapPreviewFragment(thiz, bitmap);
+                            media.setContent(bitmap);
                         } catch (FileNotFoundException e) {
                             Log.w(LOG_TAG, "File not found!", e);
                         } catch (IOException e) {
@@ -231,7 +226,7 @@ public class Snapshare implements IXposedHookLoadPackage {
                             cursor.close();
                             File videoFile = new File(filePath);
                             // Make Snapchat show the video
-                            initSnapPreviewFragment(thiz, Uri.fromFile(videoFile));
+                            media.setContent(Uri.fromFile(videoFile));
                         } else {
                             Log.w(LOG_TAG, "Couldn't resolve content URI to file path!");
                         }
@@ -251,93 +246,73 @@ public class Snapshare implements IXposedHookLoadPackage {
                 }
             }
 
-            /** Makes Snapchat show the image or video.
-             * The method first creates a SnapCapturedEvent and then displays the SnapPreviewFragment.
-             *
-             * @param thiz The LandingPageActivity
-             * @param media Either the Bitmap of the image or the Uri of the video
-             */
-            private void initSnapPreviewFragment(Object thiz, Object media) {
-                Log.d(LOG_TAG, "Initializing SnapPreviewFragment");
-                /* We put a SnapCapturedEvent, representing our image or video, into the mSnapCapturedEvent
-                 * member variable. Then we initialize the SnapPreviewFragment which will automatically
-                 * pull the SnapCapturedEvent from the LandingPageActivity. */
-                Object snapCaptureEvent = newInstance(SnapCapturedEventClass, media);
-                setObjectField(thiz, "mSnapCapturedEvent", snapCaptureEvent);
-                /* The following smali code is implemented below to start the SnapPreviewFragment.
-                 * Taken from the onSnapCapturedEvent method of the LandingPageActivity class. (Snapchat v3.0.4)
-                 * Unfortunately, it is not possible to use the existing code for this, because
-                 * the onSnapCapturedEvent method has to be called first with a trivial
-                 * SnapCapturedEvent (trivial meaning with an empty Bitmap) for the SnapPreviewFragment
-                 * to be initialized. But then it also tries to set the CameraView invisible,
-                 * which results in a NullPointerException, as the Camera is not even initialized here.
-                 * See the full smali code for details.
+        });
+        /** 
+         * We needed to find a method that got called after the camera was ready. 
+         * refreshFlashButton is the only method that falls under this category.
+         * As a result, we need to be very careful to clean up after ourselves, to prevent
+         * crashes and not being able to quit etc...
+         * 
+         * after the method is called, we call the eventbus to send a snapcapture event 
+         * with our own media.
+         */
+        findAndHookMethod("com.snapchat.android.camera.CameraPreviewFragment", lpparam.classLoader, "refreshFlashButton", new XC_MethodHook() {
 
-                 .line 741
-                 new-instance v0, Lcom/snapchat/android/SnapPreviewFragment;
+            @Override
+            protected void afterHookedMethod(MethodHookParam param)
+                    throws Throwable {
+                if(initializedUri == null) return; // We don't have an image to send, so don't try to send one
+                Object snapCaptureEvent = newInstance(SnapCapturedEventClass, media.getContent());
+                callMethod(callStaticMethod(findClass("com.snapchat.android.util.eventbus.BusProvider", lpparam.classLoader), "getInstance")
+                        , "post", snapCaptureEvent);
 
-                 invoke-direct {v0}, Lcom/snapchat/android/SnapPreviewFragment;-><init>()V
+                initializedUri = null; // clean up after ourselves. If we don't do this snapchat will crash.
 
-                 iput-object v0, p0, Lcom/snapchat/android/LandingPageActivity;->mSnapPreviewFragment:Lcom/snapchat/android/SnapPreviewFragment;
-
-                 .line 742
-                 iget-object v0, p0, Lcom/snapchat/android/LandingPageActivity;->mSnapPreviewFragment:Lcom/snapchat/android/SnapPreviewFragment;
-
-                 const-string v1, "preview"
-
-                 invoke-direct {p0, v0, v1}, Lcom/snapchat/android/LandingPageActivity;->startFragment(Lcom/snapchat/android/util/fragment/AccessibilityFragment;Ljava/lang/String;)V
-                 */
-                 /* no longer need this as part of the hack, eventually go back to this after figuring out what the hell is going on 
-                 
-                Object snapPreviewFragment = newInstance(findClass("com.snapchat.android.SnapPreviewFragment", lpparam.classLoader));
-               // setObjectField(thiz, "mSnapPreviewFragment", snapPreviewFragment); // no longer in 4.0.20
-                callMethod(thiz, "startFragment", snapPreviewFragment, "PreviewFragment"); // new String
-                */
             }
         });
 
         // This is a pure debugging hook.
         if (DEBUG)
-        findAndHookMethod("com.snapchat.android.LandingPageActivity", lpparam.classLoader, "onSnapCapturedEvent", SnapCapturedEventClass, new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                boolean b = (Boolean) callMethod(param.thisObject, "isSnapPreviewFragmentShowing");
-                Bitmap bitmap = (Bitmap) callMethod(param.args[0], "getPhotoBitmap");
-                Log.d(LOG_TAG, "isSnapPreviewFragmentShowing? " + b + "; snapCapturedEvent's bitmap trivial? " + (bitmap == null));
-            }
-        });
+            findAndHookMethod("com.snapchat.android.LandingPageActivity", lpparam.classLoader, "onSnapCapturedEvent", SnapCapturedEventClass, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    // boolean b = (Boolean) callMethod(param.thisObject, "isSnapPreviewFragmentShowing");
+                    Bitmap bitmap = (Bitmap) callMethod(param.args[0], "getPhotoBitmap");
+                    Log.d(LOG_TAG, "snapCapturedEvent's bitmap trivial? " + (bitmap == null));
+                }
+            });
 
         // This is a pure debugging hook to print some information about the intent and image.
         if (DEBUG)
-        findAndHookMethod("com.snapchat.android.SnapPreviewFragment", lpparam.classLoader, "onCreateView", LayoutInflater.class, ViewGroup.class, Bundle.class, new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                Log.d(LOG_TAG, "Fr#onCreateView> mSnapCapturedEvent null? " + (getObjectField(param.thisObject, "mSnapCapturedEvent") == null));
-                Object sce = callMethod(callSuperMethod(param.thisObject, "getActivity"), "getSnapCapturedEvent");
-                Log.d(LOG_TAG, "Fr#onCreateView> getSnapCapturedEvent returns null? " + (sce == null));
-            }
-
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                Object thiz = param.thisObject;
-                Activity curActivity = (Activity) callSuperMethod(thiz, "getActivity");
-                Log.d(LOG_TAG, "Fr#onCreateView> Current Activity: " + curActivity.getLocalClassName());
-                Intent intent = curActivity.getIntent();
-                Log.d(LOG_TAG, "Fr#onCreateView> Intent type: " + intent.getType());
-                if (getBooleanField(thiz, "mIsVideoSnap")) {
-                    Log.d(LOG_TAG, "Fr#onCreateView> Previewing a video.");
+            findAndHookMethod("com.snapchat.android.SnapPreviewFragment", lpparam.classLoader, "onCreateView", LayoutInflater.class, ViewGroup.class, Bundle.class, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    Log.d(LOG_TAG, "Fr#onCreateView> mSnapCapturedEvent null? " + (getObjectField(param.thisObject, "mSnapCapturedEvent") == null));
+                    Object sce = callMethod(callSuperMethod(param.thisObject, "getActivity"), "getSnapCapturedEvent");
+                    Log.d(LOG_TAG, "Fr#onCreateView> getSnapCapturedEvent returns null? " + (sce == null));
                 }
-                else {
-                    Bitmap bitmap = (Bitmap) getObjectField(thiz, "mImageBitmap");
-                    Log.d(LOG_TAG, "Fr#onCreateView> mImageBitmap null? " + (bitmap == null));
-                    if (bitmap != null) {
-                        Log.d(LOG_TAG, "Fr#onCreateView> Image Width x Height: " + bitmap.getWidth() + " x " + bitmap.getHeight());
-                        DisplayMetrics dm = (DisplayMetrics) getObjectField(thiz, "mDisplayMetrics");
-                        Log.d(LOG_TAG, "Fr#onCreateView> SnapPreviewActivity Display Metrics w x h: " + dm.widthPixels + " x " + dm.heightPixels);
+
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    Object thiz = param.thisObject;
+                    Activity curActivity = (Activity) callSuperMethod(thiz, "getActivity");
+                    Log.d(LOG_TAG, "Fr#onCreateView> Current Activity: " + curActivity.getLocalClassName());
+                    Intent intent = curActivity.getIntent();
+                    Log.d(LOG_TAG, "Fr#onCreateView> Intent type: " + intent.getType());
+                    if (getBooleanField(thiz, "mIsVideoSnap")) {
+                        Log.d(LOG_TAG, "Fr#onCreateView> Previewing a video.");
+                    }
+                    else {
+                        Bitmap bitmap = (Bitmap) getObjectField(thiz, "mImageBitmap");
+                        Log.d(LOG_TAG, "Fr#onCreateView> mImageBitmap null? " + (bitmap == null));
+                        if (bitmap != null) {
+                            Log.d(LOG_TAG, "Fr#onCreateView> Image Width x Height: " + bitmap.getWidth() + " x " + bitmap.getHeight());
+                            DisplayMetrics dm = (DisplayMetrics) getObjectField(thiz, "mDisplayMetrics");
+                            Log.d(LOG_TAG, "Fr#onCreateView> SnapPreviewActivity Display Metrics w x h: " + dm.widthPixels + " x " + dm.heightPixels);
+                        }
                     }
                 }
-            }
-        });
+            });
 
         /** The following two hooks prevent Snapchat from deleting videos shared with Snapshare.
          * It does so by checking whether the path of the video file to be deleted contains the
@@ -347,7 +322,7 @@ public class Snapshare implements IXposedHookLoadPackage {
          * We could just copy the video into the temporary video cache of Snapchat and then don't
          * care that Snapchat is deleting videos after sending them. I found it, however, more fancy
          * to intercept all methods that delete the video files, in case we are sending our own video. ;)
-         */
+
         findAndHookMethod("com.snapchat.android.model.SentSnap", lpparam.classLoader, "deleteBackingVideoFile", new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
@@ -362,6 +337,7 @@ public class Snapshare implements IXposedHookLoadPackage {
                 Log.d(LOG_TAG, logMsg + videoPath);
             }
         });
+         */
 
         findAndHookMethod("com.snapchat.android.SnapPreviewFragment", lpparam.classLoader, "onDestroy", new XC_MethodHook() {
             @Override
