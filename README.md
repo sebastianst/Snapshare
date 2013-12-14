@@ -3,8 +3,7 @@ Snapshare
 Introduction
 ------------
 
-Apologies for the different signature, I moved the project over to my development machine.
-
+*There is a version that works with snapchat 4.0.21 (the beta).*
 
 This programme lets you share any image via Snapchat, not only pictures you take with the camera
 from within Snapchat. When you are viewing an image and click on *share*, Snapshare will pop up as
@@ -14,7 +13,7 @@ with your camera from within Snapchat.
 It uses the [Xposed framework](http://forum.xda-developers.com/showthread.php?t=1574401) to
 intercept launches of Snapchat from Snapshare and do the magic.
 
-A compiled APK can be downloaded from the [Releases tab](https://github.com/amcgavin/Snapshare/releases).
+A compiled APK can be downloaded from the [Releases tab](https://github.com/amcgavin/Snapshare/releases/latest).
 
 The software was created using Android Studio with gradle on an Arch Linux machine.
 
