@@ -42,6 +42,7 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 
 import com.amcgavin.snapshare.Media;
+import com.amcgavin.snapshare.Obfuscator;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -55,16 +56,18 @@ import static de.robv.android.xposed.XposedHelpers.findClass;
 import static de.robv.android.xposed.XposedHelpers.getBooleanField;
 import static de.robv.android.xposed.XposedHelpers.getObjectField;
 import static de.robv.android.xposed.XposedHelpers.newInstance;
-import static de.robv.android.xposed.XposedHelpers.setObjectField;
 import static de.robv.android.xposed.XposedHelpers.setStaticBooleanField;
 import static de.robv.android.xposed.XposedHelpers.callStaticMethod;
 
 public class Snapshare implements IXposedHookLoadPackage {
     // Debugging settings
     public static final String LOG_TAG = "Snapshare";
-    public static final boolean DEBUG = true;
+    public static final boolean DEBUG = false;
     /** Enable Snapchat's internal debugging mode? */
     public static final boolean TIMBER = false;
+    
+    /** Is the version of snapchat pre or post obfuscation? (4.0.21) */
+    public static final boolean POST = true;
     /** Only if a video file path contains this pattern, Snapchat is allowed to delete the video,
      * because then it is a video file recored by Snapchat itself and not a shared one. */
     public static final String VIDEO_CACHE_PATTERN = "/com.snapchat.android/cache/sending_video_snaps/snapchat_video";
@@ -78,6 +81,8 @@ public class Snapshare implements IXposedHookLoadPackage {
             return;
         else
             XposedBridge.log("Snapshare: Snapchat load detected.");
+        
+
         // Timber is Snapchat's internal debugging class. By default, it is disabled in the upstream
         // Snapchat version. We can enable it by settings its static member DEBUG to true.
         if (TIMBER) {
@@ -256,15 +261,15 @@ public class Snapshare implements IXposedHookLoadPackage {
          * after the method is called, we call the eventbus to send a snapcapture event 
          * with our own media.
          */
-        findAndHookMethod("com.snapchat.android.camera.CameraPreviewFragment", lpparam.classLoader, "refreshFlashButton", new XC_MethodHook() {
+        findAndHookMethod("com.snapchat.android.camera.CameraPreviewFragment", lpparam.classLoader, Obfuscator.refreshFlashButton.getValue(), new XC_MethodHook() {
 
             @Override
             protected void afterHookedMethod(MethodHookParam param)
                     throws Throwable {
                 if(initializedUri == null) return; // We don't have an image to send, so don't try to send one
                 Object snapCaptureEvent = newInstance(SnapCapturedEventClass, media.getContent());
-                callMethod(callStaticMethod(findClass("com.snapchat.android.util.eventbus.BusProvider", lpparam.classLoader), "getInstance")
-                        , "post", snapCaptureEvent);
+                callMethod(callStaticMethod(findClass("com.snapchat.android.util.eventbus.BusProvider", lpparam.classLoader), Obfuscator.busGetInstance.getValue())
+                        , Obfuscator.busPost.getValue(), snapCaptureEvent);
 
                 initializedUri = null; // clean up after ourselves. If we don't do this snapchat will crash.
 
@@ -339,6 +344,7 @@ public class Snapshare implements IXposedHookLoadPackage {
         });
          */
 
+        /* no longer needed
         findAndHookMethod("com.snapchat.android.SnapPreviewFragment", lpparam.classLoader, "onDestroy", new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
@@ -361,6 +367,7 @@ public class Snapshare implements IXposedHookLoadPackage {
                 Log.d(LOG_TAG, "Fr#onDestroy> Called");
             }
         });
+        */
     }
 
     /** {@code XposedHelpers.callMethod()} cannot call methods of the super class of an object, because it
