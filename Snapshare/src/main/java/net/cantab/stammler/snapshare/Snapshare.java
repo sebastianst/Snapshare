@@ -23,6 +23,7 @@ package net.cantab.stammler.snapshare;
 
 import android.app.Activity;
 import android.content.ContentResolver;
+import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -65,9 +66,9 @@ public class Snapshare implements IXposedHookLoadPackage {
     public static final boolean DEBUG = false;
     /** Enable Snapchat's internal debugging mode? */
     public static final boolean TIMBER = false;
-    
-    /** Is the version of snapchat pre or post obfuscation? (4.0.21) */
-    public static final boolean POST = true;
+
+    /** what version is snapchat? */
+    public static int SNAPCHAT_VERSION = Obfuscator.FOUR_20;
     /** Only if a video file path contains this pattern, Snapchat is allowed to delete the video,
      * because then it is a video file recored by Snapchat itself and not a shared one. */
     public static final String VIDEO_CACHE_PATTERN = "/com.snapchat.android/cache/sending_video_snaps/snapchat_video";
@@ -82,7 +83,20 @@ public class Snapshare implements IXposedHookLoadPackage {
         else
             XposedBridge.log("Snapshare: Snapchat load detected.");
         
+        /** thanks to KeepChat for the following snippet: **/
+        Object activityThread = callStaticMethod(
+                findClass("android.app.ActivityThread", null), "currentActivityThread");
+        Context context = (Context) callMethod(activityThread, "getSystemContext");
+        int version = context.getPackageManager().getPackageInfo(lpparam.packageName, 0).versionCode;
+        Log.d(LOG_TAG, "Version code: " + version);
+        if(version == 175) {
+            SNAPCHAT_VERSION = Obfuscator.FOUR_21;
+        }
+        else if(version == 181) {
+            SNAPCHAT_VERSION = Obfuscator.FOUR_22;
+        }
 
+        
         // Timber is Snapchat's internal debugging class. By default, it is disabled in the upstream
         // Snapchat version. We can enable it by settings its static member DEBUG to true.
         if (TIMBER) {
@@ -261,15 +275,15 @@ public class Snapshare implements IXposedHookLoadPackage {
          * after the method is called, we call the eventbus to send a snapcapture event 
          * with our own media.
          */
-        findAndHookMethod("com.snapchat.android.camera.CameraPreviewFragment", lpparam.classLoader, Obfuscator.refreshFlashButton.getValue(), new XC_MethodHook() {
+        findAndHookMethod("com.snapchat.android.camera.CameraPreviewFragment", lpparam.classLoader, Obfuscator.CAMERA_LOAD.getValue(SNAPCHAT_VERSION), new XC_MethodHook() {
 
             @Override
             protected void afterHookedMethod(MethodHookParam param)
                     throws Throwable {
                 if(initializedUri == null) return; // We don't have an image to send, so don't try to send one
                 Object snapCaptureEvent = newInstance(SnapCapturedEventClass, media.getContent());
-                callMethod(callStaticMethod(findClass("com.snapchat.android.util.eventbus.BusProvider", lpparam.classLoader), Obfuscator.busGetInstance.getValue())
-                        , Obfuscator.busPost.getValue(), snapCaptureEvent);
+                callMethod(callStaticMethod(findClass("com.snapchat.android.util.eventbus.BusProvider", lpparam.classLoader), Obfuscator.GET_BUS.getValue(SNAPCHAT_VERSION))
+                        , Obfuscator.BUS_POST.getValue(SNAPCHAT_VERSION), snapCaptureEvent);
 
                 initializedUri = null; // clean up after ourselves. If we don't do this snapchat will crash.
 
@@ -367,7 +381,7 @@ public class Snapshare implements IXposedHookLoadPackage {
                 Log.d(LOG_TAG, "Fr#onDestroy> Called");
             }
         });
-        */
+         */
     }
 
     /** {@code XposedHelpers.callMethod()} cannot call methods of the super class of an object, because it

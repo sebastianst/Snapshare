@@ -26,23 +26,27 @@ a gazillion times. If not, see <http://www.gnu.org/licenses/>.
  *
  */
 public enum Obfuscator {
+      
+    CAMERA_LOAD (new String[] {"refreshFlashButton", "k", "l"}),
+    GET_BUS (new String[] {"getInstance", "a", "a"}),
+    BUS_POST (new String[] {"post", "c", "c"});
     
-    refreshFlashButton ("refreshFlashButton", "k"),
-    busGetInstance ("getInstance", "a"),
-    busPost ("post", "c");
+    public static final int FOUR_20 = 0;
+    public static final int FOUR_21 = 1;
+    public static final int FOUR_22 = 2;
     
-    private String pre;
-    private String post;
-    Obfuscator(String pre, String post) {
-        this.pre = pre;
-        this.post = post;
+    private String[] v;
+    
+    Obfuscator(String[] v) {
+        this.v = v;
     }
-    
-    public String getValue() {
-        if (net.cantab.stammler.snapshare.Snapshare.POST) {
-            return this.post;
-        }
-        else return this.pre;
+ 
+    /** 
+     * Gets the method name to hook
+     * @param version snapchat version
+     * @return the actual method name
+     */
+    public String getValue(int version) {
+        return this.v[version];
     }
-
 }
