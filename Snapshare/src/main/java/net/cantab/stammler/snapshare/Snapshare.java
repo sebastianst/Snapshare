@@ -95,6 +95,7 @@ public class Snapshare implements IXposedHookLoadPackage {
         else if(version == 181) {
             SNAPCHAT_VERSION = Obfuscator.FOUR_22;
         }
+        else SNAPCHAT_VERSION = Obfuscator.FOUR_22; // assume the pattern holds for later versions.
 
         
         // Timber is Snapchat's internal debugging class. By default, it is disabled in the upstream
