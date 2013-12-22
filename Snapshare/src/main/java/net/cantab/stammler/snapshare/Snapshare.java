@@ -89,7 +89,10 @@ public class Snapshare implements IXposedHookLoadPackage {
         Context context = (Context) callMethod(activityThread, "getSystemContext");
         int version = context.getPackageManager().getPackageInfo(lpparam.packageName, 0).versionCode;
         Log.d(LOG_TAG, "Version code: " + version);
-        if(version == 175) {
+        if(version < 175) {
+            SNAPCHAT_VERSION = Obfuscator.FOUR_20;
+        }
+        else if(version == 175) {
             SNAPCHAT_VERSION = Obfuscator.FOUR_21;
         }
         else if(version == 181) {
