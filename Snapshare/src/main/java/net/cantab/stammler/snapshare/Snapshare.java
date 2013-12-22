@@ -27,7 +27,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.MediaStore;
@@ -47,6 +50,7 @@ import com.amcgavin.snapshare.Obfuscator;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XSharedPreferences;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
@@ -68,7 +72,14 @@ public class Snapshare implements IXposedHookLoadPackage {
     public static final boolean TIMBER = false;
 
     /** what version is snapchat? */
-    public static int SNAPCHAT_VERSION = Obfuscator.FOUR_20;
+    public static int SNAPCHAT_VERSION = Obfuscator.FOUR_22;
+
+    /** Adjustment methods */
+    private int adjustMethod;
+    public static final int ADJUST_CROP = 0;
+    public static final int ADJUST_SCALE = 1;
+    public static final int ADJUST_NONE = 2;
+
     /** Only if a video file path contains this pattern, Snapchat is allowed to delete the video,
      * because then it is a video file recored by Snapchat itself and not a shared one. */
     public static final String VIDEO_CACHE_PATTERN = "/com.snapchat.android/cache/sending_video_snaps/snapchat_video";
@@ -76,13 +87,15 @@ public class Snapshare implements IXposedHookLoadPackage {
      * initializedUri to the current media's Uri to prevent another call of onCreate() to initialize
      * the media again. E.g. onCreate() is called again if the phone is rotated. */
     private Uri initializedUri;
-
+    private XSharedPreferences prefs = new XSharedPreferences("net.cantab.stammler.snapshare");
     public void handleLoadPackage(final XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
         if (!lpparam.packageName.equals("com.snapchat.android"))
             return;
         else
             XposedBridge.log("Snapshare: Snapchat load detected.");
-        
+
+        refreshPrefs();
+
         /** thanks to KeepChat for the following snippet: **/
         Object activityThread = callStaticMethod(
                 findClass("android.app.ActivityThread", null), "currentActivityThread");
@@ -98,9 +111,8 @@ public class Snapshare implements IXposedHookLoadPackage {
         else if(version == 181) {
             SNAPCHAT_VERSION = Obfuscator.FOUR_22;
         }
-        else SNAPCHAT_VERSION = Obfuscator.FOUR_22; // assume the pattern holds for later versions.
 
-        
+
         // Timber is Snapchat's internal debugging class. By default, it is disabled in the upstream
         // Snapchat version. We can enable it by settings its static member DEBUG to true.
         if (TIMBER) {
@@ -127,6 +139,8 @@ public class Snapshare implements IXposedHookLoadPackage {
         final Class SnapCapturedEventClass = findClass("com.snapchat.android.util.eventbus.SnapCapturedEvent", lpparam.classLoader);
         final Media media = new Media(); // a place to store the media
 
+
+
         /**
          * Here the main work happens. We hook after the onCreate() call of the main Activity
          * to create a sensible media object.
@@ -134,6 +148,7 @@ public class Snapshare implements IXposedHookLoadPackage {
         findAndHookMethod("com.snapchat.android.LandingPageActivity", lpparam.classLoader, "onCreate", Bundle.class, new XC_MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                refreshPrefs();
                 Object thiz = param.thisObject;
                 // Get intent, action and MIME type
                 Intent intent = (Intent) callSuperMethod(thiz, "getIntent");
@@ -172,13 +187,16 @@ public class Snapshare implements IXposedHookLoadPackage {
                             Log.d(LOG_TAG, "Original image w x h: " + width + " x " + height);
                             // Landscape images have to be rotated 90 degrees clockwise for Snapchat to be displayed correctly
                             if (width > height) {
-                                Log.d(LOG_TAG, "Landscape image detected, rotating 90 degrees clockwise.");
-                                Matrix matrix = new Matrix();
-                                matrix.setRotate(90);
-                                bitmap = createBitmap(bitmap, 0, 0, width, height, matrix, true);
-                                // resetting width and height
-                                width = bitmap.getWidth();
-                                height = bitmap.getHeight();
+                                // check if the user wants to rotate
+                                if(prefs.getBoolean("pref_key_rotate", true)) {
+                                    Log.d(LOG_TAG, "Landscape image detected, rotating 90 degrees clockwise.");
+                                    Matrix matrix = new Matrix();
+                                    matrix.setRotate(90);
+                                    bitmap = createBitmap(bitmap, 0, 0, width, height, matrix, true);
+                                    // resetting width and height
+                                    width = bitmap.getWidth();
+                                    height = bitmap.getHeight();
+                                }
                             }
 
                             /**
@@ -195,6 +213,7 @@ public class Snapshare implements IXposedHookLoadPackage {
                             ((WindowManager) callSuperMethod(thiz, "getWindowManager")).getDefaultDisplay().getMetrics(dm);
                             int dWidth = dm.widthPixels;
                             int dHeight = dm.heightPixels;
+
                             Log.d(LOG_TAG, "Display metrics w x h: " + dWidth + " x " + dHeight);
                             // DisplayMetrics' values depend on the phone's tilt, so we normalize them to Portrait mode
                             if (dWidth > dHeight) {
@@ -204,29 +223,53 @@ public class Snapshare implements IXposedHookLoadPackage {
                                 dWidth = dHeight;
                                 dHeight = temp;
                             }
-                            /* If the image properly covers the Display rectangle, we mark it as a "large" image
+                            if(adjustMethod==ADJUST_CROP) {
+                                /* If the image properly covers the Display rectangle, we mark it as a "large" image
                             and are going to scale it down. We make this distinction because we don't wanna
                             scale the image up if it is smaller than the Display rectangle. */
-                            boolean largeImage = ((width > dWidth) & (height > dHeight));
-                            Log.d(LOG_TAG, "Large image? " + largeImage);
-                            int imageToDisplayRatio = width * dHeight - height * dWidth;
-                            if (imageToDisplayRatio > 0) {
-                                // i.e., width/height > dWidth/dHeight, so have to crop from left and right:
-                                int newWidth = (dWidth * height / dHeight);
-                                Log.d(LOG_TAG, "New width after cropping left & right: " + newWidth);
-                                bitmap = createBitmap(bitmap, (width - newWidth) / 2, 0, newWidth, height);
+                                boolean largeImage = ((width > dWidth) & (height > dHeight));
+                                Log.d(LOG_TAG, "Large image? " + largeImage);
+                                int imageToDisplayRatio = width * dHeight - height * dWidth;
+                                if (imageToDisplayRatio > 0) {
+                                    // i.e., width/height > dWidth/dHeight, so have to crop from left and right:
+                                    int newWidth = (dWidth * height / dHeight);
+                                    Log.d(LOG_TAG, "New width after cropping left & right: " + newWidth);
+                                    bitmap = createBitmap(bitmap, (width - newWidth) / 2, 0, newWidth, height);
 
-                            } else if (imageToDisplayRatio < 0) {
-                                // i.e., width/height < dWidth/dHeight, so have to crop from top and bottom:
-                                int newHeight = (dHeight * width / dWidth);
-                                Log.d(LOG_TAG, "New height after cropping top & bottom: " + newHeight);
-                                bitmap = createBitmap(bitmap, 0, (height - newHeight) / 2, width, newHeight);
+                                } else if (imageToDisplayRatio < 0) {
+                                    // i.e., width/height < dWidth/dHeight, so have to crop from top and bottom:
+                                    int newHeight = (dHeight * width / dWidth);
+                                    Log.d(LOG_TAG, "New height after cropping top & bottom: " + newHeight);
+                                    bitmap = createBitmap(bitmap, 0, (height - newHeight) / 2, width, newHeight);
+                                }
+                                if (largeImage) {
+                                    Log.d(LOG_TAG, "Scaling down.");
+                                    bitmap = Bitmap.createScaledBitmap(bitmap, dWidth, dHeight, true);
+                                }
+                                /// Scaling and cropping finished, ready to let Snapchat display our result
                             }
-                            if (largeImage) {
-                                Log.d(LOG_TAG, "Scaling down.");
-                                bitmap = Bitmap.createScaledBitmap(bitmap, dWidth, dHeight, true);
+                            else {
+                                // we are going to scale the image down and place a black background behind it
+                                Bitmap background = Bitmap.createBitmap(dWidth, dHeight, Bitmap.Config.ARGB_8888);
+                                background.eraseColor(Color.BLACK);
+                                Canvas canvas = new Canvas(background);
+                                Matrix transform = new Matrix();
+                                float scale = dWidth / (float)width;
+                                float xTrans = 0;
+                                if(adjustMethod == ADJUST_NONE) {
+                                    // Remove scaling and add some translation
+                                    scale = 1;
+                                    xTrans = dWidth/2 - width/2;
+                                }
+                                float yTrans = dHeight/2 - scale*height/2;
+
+                                transform.preScale(scale, scale);
+                                transform.postTranslate(xTrans, yTrans);
+                                Paint paint = new Paint();
+                                paint.setFilterBitmap(true);
+                                canvas.drawBitmap(bitmap, transform, paint);
+                                bitmap = background;
                             }
-                            /// Scaling and cropping finished, ready to let Snapchat display our result
 
                             // Make Snapchat show the image
                             media.setContent(bitmap);
@@ -388,6 +431,13 @@ public class Snapshare implements IXposedHookLoadPackage {
          */
     }
 
+    /** 
+     * refreshes Preferences
+     */
+    private void refreshPrefs() {
+        prefs.reload();
+        adjustMethod = Integer.parseInt(prefs.getString("pref_key_adjustment", Integer.toString(ADJUST_CROP)));
+    }
     /** {@code XposedHelpers.callMethod()} cannot call methods of the super class of an object, because it
      * uses {@code getDeclaredMethods()}. So we have to implement this little helper, which should work
      * similar to {@code }callMethod()}. Furthermore, the exceptions from getMethod() are passed on.

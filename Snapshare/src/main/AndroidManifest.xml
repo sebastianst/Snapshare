@@ -1,27 +1,50 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="net.cantab.stammler.snapshare"
-    android:versionCode="6"
-    android:versionName="1.5.2">
+    android:versionCode="7"
+    android:versionName="1.6" >
 
-    <uses-sdk android:minSdkVersion="15" android:targetSdkVersion="19" />
+    <uses-sdk
+        android:minSdkVersion="15"
+        android:targetSdkVersion="19" />
 
-    <application android:allowBackup="true"
-        android:label="@string/app_name"
-        android:icon="@drawable/ic_launcher">
-        <meta-data android:value="true" android:name="xposedmodule"/>
-        <meta-data android:value="2.0*" android:name="xposedminversion"/>
-        <meta-data android:value="Lets you share arbitrary images and videos via Snapchat." android:name="xposeddescription"/>
-        <activity android:name=".ReceiveMediaActivity"
-                  android:theme="@android:style/Theme.NoDisplay">
+    <application
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name" >
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true" />
+        <meta-data
+            android:name="xposedminversion"
+            android:value="2.0*" />
+        <meta-data
+            android:name="xposeddescription"
+            android:value="Lets you share arbitrary images and videos via Snapchat." />
+
+        <activity
+            android:name=".ReceiveMediaActivity"
+            android:theme="@android:style/Theme.NoDisplay" >
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
+
                 <category android:name="android.intent.category.DEFAULT" />
+
                 <data android:mimeType="image/*" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
+
                 <category android:name="android.intent.category.DEFAULT" />
+
                 <data android:mimeType="video/mp4" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name="com.amcgavin.snapshare.SettingsActivity"
+            android:label="Snapshare Settings" >
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
     </application>

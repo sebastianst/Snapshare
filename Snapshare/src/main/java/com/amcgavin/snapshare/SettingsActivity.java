@@ -1,6 +1,6 @@
 package com.amcgavin.snapshare;
 /**
-Obfuscator.java created on 12/12/13.
+SettingsActivity.java created on 22/12/13.
 
 Copyright (C) 2013 Alec McGavin <alec.mcgavin@gmail.com>
 
@@ -20,33 +20,22 @@ You should have received a copy of the GNU General Public License
 a gazillion times. If not, see <http://www.gnu.org/licenses/>.
  */
 
-/** 
- * 
- * This helps with the new obfuscation in snapchat version 4.0.21+
+import net.cantab.stammler.snapshare.R;
+import android.app.Activity;
+import android.os.Bundle;
+import android.preference.PreferenceManager;
+
+/**
+ * Activity that gets called when the icon is clicked.
  *
  */
-public enum Obfuscator {
+public class SettingsActivity extends Activity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        getFragmentManager().beginTransaction().replace(android.R.id.content, new Settings()).commit();
+        PreferenceManager.setDefaultValues(this, R.xml.prefs, false);
 
-    CAMERA_LOAD (new String[] {"refreshFlashButton", "k", "l"}),
-    GET_BUS (new String[] {"getInstance", "a", "a"}),
-    BUS_POST (new String[] {"post", "c", "c"});
-
-    public static final int FOUR_20 = 0;
-    public static final int FOUR_21 = 1;
-    public static final int FOUR_22 = 2;
-
-    private String[] v;
-
-    Obfuscator(String[] v) {
-        this.v = v;
     }
 
-    /** 
-     * Gets the method name to hook
-     * @param version snapchat version
-     * @return the actual method name
-     */
-    public String getValue(int version) {
-        return this.v[version];
-    }
 }
