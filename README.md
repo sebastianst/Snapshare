@@ -3,8 +3,6 @@ Snapshare
 Introduction
 ------------
 
-*There is a version that works with snapchat 4.0.21 (the beta).*
-
 This programme lets you share any image via Snapchat, not only pictures you take with the camera
 from within Snapchat. When you are viewing an image and click on *share*, Snapshare will pop up as
 an option. It will load Snapchat and lets you even paint on the image as if you had just taken it
