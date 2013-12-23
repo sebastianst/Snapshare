@@ -1,7 +1,7 @@
 <resources>
 
     <string name="app_name">Snapshare</string>
-    <string name="pref_general">General</string>
+    <string name="pref_general">Images</string>
     <string name="pref_rotate_title">Rotate Images</string>
     <string name="pref_rotate_on">Rotation enabled</string>
     <string name="pref_rotate_off">Rotation disabled</string>

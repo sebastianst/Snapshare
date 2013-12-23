@@ -63,6 +63,7 @@ import static de.robv.android.xposed.XposedHelpers.getObjectField;
 import static de.robv.android.xposed.XposedHelpers.newInstance;
 import static de.robv.android.xposed.XposedHelpers.setStaticBooleanField;
 import static de.robv.android.xposed.XposedHelpers.callStaticMethod;
+import static de.robv.android.xposed.XposedHelpers.setObjectField;
 
 public class Snapshare implements IXposedHookLoadPackage {
     // Debugging settings
@@ -405,12 +406,16 @@ public class Snapshare implements IXposedHookLoadPackage {
         });
          */
 
-        /* no longer needed
-        findAndHookMethod("com.snapchat.android.SnapPreviewFragment", lpparam.classLoader, "onDestroy", new XC_MethodHook() {
+        /**
+         * Stop snapchat deleting our video when the view is cancelled.
+         */
+        findAndHookMethod("com.snapchat.android.SnapPreviewFragment", lpparam.classLoader, Obfuscator.ON_BACK_PRESS.getValue(SNAPCHAT_VERSION), new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                 Object thiz = param.thisObject;
-                Uri videoUri = (Uri) getObjectField(thiz, "mVideoUri");
+                Object event = getObjectField(thiz, Obfuscator.M_SNAP_C_EVENT.getValue(SNAPCHAT_VERSION));
+                String mVideoUri = Obfuscator.M_VIDEO_URI.getValue(SNAPCHAT_VERSION);
+                Uri videoUri = (Uri) getObjectField(event, mVideoUri);
                 if (videoUri != null) {
                     String videoPath = videoUri.getPath();
                     String logMsg;
@@ -420,7 +425,9 @@ public class Snapshare implements IXposedHookLoadPackage {
                         // We create a dummy file that Snapchat can delete instead of our video, so that
                         // onDestroy can run normally.
                         File deleteMe = File.createTempFile("delete", "me");
-                        setObjectField(thiz, "mVideoUri", Uri.fromFile(deleteMe));
+                        setObjectField(event, mVideoUri, Uri.fromFile(deleteMe));
+                       
+                        
                         logMsg = "Fr#onDestroy> Prevented Snapchat from deleting our video file ";
                     }
                     Log.d(LOG_TAG, logMsg + videoPath);
@@ -428,7 +435,7 @@ public class Snapshare implements IXposedHookLoadPackage {
                 Log.d(LOG_TAG, "Fr#onDestroy> Called");
             }
         });
-         */
+
     }
 
     /** 
