@@ -413,26 +413,9 @@ public class Snapshare implements IXposedHookLoadPackage {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                 Object thiz = param.thisObject;
-                Object event = getObjectField(thiz, Obfuscator.M_SNAP_C_EVENT.getValue(SNAPCHAT_VERSION));
-                String mVideoUri = Obfuscator.M_VIDEO_URI.getValue(SNAPCHAT_VERSION);
-                Uri videoUri = (Uri) getObjectField(event, mVideoUri);
-                if (videoUri != null) {
-                    String videoPath = videoUri.getPath();
-                    String logMsg;
-                    if (videoPath.contains(VIDEO_CACHE_PATTERN)) {
-                        logMsg = "Fr#onDestroy> Allow Snapchat to delete own cached video file ";
-                    } else {
-                        // We create a dummy file that Snapchat can delete instead of our video, so that
-                        // onDestroy can run normally.
-                        File deleteMe = File.createTempFile("delete", "me");
-                        setObjectField(event, mVideoUri, Uri.fromFile(deleteMe));
-                       
-                        
-                        logMsg = "Fr#onDestroy> Prevented Snapchat from deleting our video file ";
-                    }
-                    Log.d(LOG_TAG, logMsg + videoPath);
-                }
-                Log.d(LOG_TAG, "Fr#onDestroy> Called");
+                Object event = newInstance(SnapCapturedEventClass, Uri.fromFile(File.createTempFile("delete", "me")));
+                setObjectField(thiz, Obfuscator.M_SNAP_C_EVENT.getValue(SNAPCHAT_VERSION), event);
+                Log.d(LOG_TAG, "prevented snapchat from deleting our video.");
             }
         });
 

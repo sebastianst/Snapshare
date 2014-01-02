@@ -32,7 +32,7 @@ public enum Obfuscator {
     BUS_POST (new String[] {"post", "c", "c"}),
     M_SNAP_C_EVENT (new String[] {"mSnapCapturedEvent", "w", "w"}),
     M_VIDEO_URI (new String[] {"mVideoUri", "c", "c"}),
-    ON_BACK_PRESS (new String[] {"onDelegatedBackPress", "c", "c"});
+    ON_BACK_PRESS (new String[] {"onDelegatedBackPress", "m", "m"});
 
     public static final int FOUR_20 = 0;
     public static final int FOUR_21 = 1;
