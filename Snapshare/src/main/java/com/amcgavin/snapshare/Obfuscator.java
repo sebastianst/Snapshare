@@ -27,16 +27,17 @@ a gazillion times. If not, see <http://www.gnu.org/licenses/>.
  */
 public enum Obfuscator {
 
-    CAMERA_LOAD (new String[] {"refreshFlashButton", "k", "l"}),
-    GET_BUS (new String[] {"getInstance", "a", "a"}),
-    BUS_POST (new String[] {"post", "c", "c"}),
-    M_SNAP_C_EVENT (new String[] {"mSnapCapturedEvent", "w", "w"}),
-    M_VIDEO_URI (new String[] {"mVideoUri", "c", "c"}),
-    ON_BACK_PRESS (new String[] {"onDelegatedBackPress", "m", "m"});
+    CAMERA_LOAD (new String[] {"refreshFlashButton", "k", "l", "e"}),
+    GET_BUS (new String[] {"getInstance", "a", "a", "a"}),
+    BUS_POST (new String[] {"post", "c", "c", "c"}),
+    M_SNAP_C_EVENT (new String[] {"mSnapCapturedEvent", "w", "w", "v"}),
+    M_VIDEO_URI (new String[] {"mVideoUri", "c", "c", "mVideoUri"}),
+    ON_BACK_PRESS (new String[] {"onDelegatedBackPress", "m", "m", "c"});
 
     public static final int FOUR_20 = 0;
     public static final int FOUR_21 = 1;
     public static final int FOUR_22 = 2;
+    public static final int FOUR_ONE_TEN = 3;
 
     private String[] v;
 
