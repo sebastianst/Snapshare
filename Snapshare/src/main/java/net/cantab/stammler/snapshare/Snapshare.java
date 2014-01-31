@@ -69,6 +69,7 @@ import static de.robv.android.xposed.XposedHelpers.setObjectField;
 public class Snapshare implements IXposedHookLoadPackage {
     // Debugging settings
     public static final String LOG_TAG = "Snapshare";
+    public static final String SNAPSHARE_VERSION = "1.6.3";
     public static final boolean DEBUG = false;
     /** Enable Snapchat's internal debugging mode? */
     public static final boolean TIMBER = false;
@@ -103,7 +104,8 @@ public class Snapshare implements IXposedHookLoadPackage {
                 findClass("android.app.ActivityThread", null), "currentActivityThread");
         Context context = (Context) callMethod(activityThread, "getSystemContext");
         int version = context.getPackageManager().getPackageInfo(lpparam.packageName, 0).versionCode;
-        Log.d(LOG_TAG, "Version code: " + version);
+        XposedBridge.log("Snapshare: sc Version code: " + version);
+        XposedBridge.log("Snapshare version: " + SNAPSHARE_VERSION);
         if(version < 175) {
             SNAPCHAT_VERSION = Obfuscator.FOUR_20;
         }
@@ -113,7 +115,7 @@ public class Snapshare implements IXposedHookLoadPackage {
         else if(version == 181) {
             SNAPCHAT_VERSION = Obfuscator.FOUR_22;
         }
-        else if(version == 218) {
+        else if(version >= 218) {
             SNAPCHAT_VERSION = Obfuscator.FOUR_ONE_TEN;
         } 
 
