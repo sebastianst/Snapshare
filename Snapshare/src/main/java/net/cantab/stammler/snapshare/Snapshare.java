@@ -45,6 +45,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 
+
 import com.amcgavin.snapshare.Media;
 import com.amcgavin.snapshare.Obfuscator;
 
@@ -332,7 +333,20 @@ public class Snapshare implements IXposedHookLoadPackage {
             protected void afterHookedMethod(MethodHookParam param)
                     throws Throwable {
                 if(initializedUri == null) return; // We don't have an image to send, so don't try to send one
-                Object snapCaptureEvent = newInstance(SnapCapturedEventClass, media.getContent());
+
+                Object snapCaptureEvent;
+                if(SNAPCHAT_VERSION >= Obfuscator.FOUR_ONE_TEN) {
+                    // new stuff for 4.1.10: Class called Snapbryo (gross)
+                    // this class now stores all the data for snaps. What's good for us is that we can continue using either a bitmap or a videouri in a method.
+                    // SnapCapturedEvent(Snapbryo(Builder(Media)))
+                    Object builder = newInstance(findClass("com.snapchat.android.model.Snapbryo.Builder", lpparam.classLoader));
+                    builder = callMethod(builder, Obfuscator.BUILDER_CONSTRUCTOR.getValue(SNAPCHAT_VERSION), media.getContent());
+                    Object snapbryo = newInstance(findClass("com.snapchat.android.model.Snapbryo", lpparam.classLoader), builder);
+                    snapCaptureEvent = newInstance(SnapCapturedEventClass, snapbryo);
+                }
+                else {
+                    snapCaptureEvent = newInstance(SnapCapturedEventClass, media.getContent());
+                }
                 callMethod(callStaticMethod(findClass("com.snapchat.android.util.eventbus.BusProvider", lpparam.classLoader), Obfuscator.GET_BUS.getValue(SNAPCHAT_VERSION))
                         , Obfuscator.BUS_POST.getValue(SNAPCHAT_VERSION), snapCaptureEvent);
 
@@ -412,16 +426,24 @@ public class Snapshare implements IXposedHookLoadPackage {
         /**
          * Stop snapchat deleting our video when the view is cancelled.
          */
+
         findAndHookMethod("com.snapchat.android.SnapPreviewFragment", lpparam.classLoader, Obfuscator.ON_BACK_PRESS.getValue(SNAPCHAT_VERSION), new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                 Object thiz = param.thisObject;
-                Object event = newInstance(SnapCapturedEventClass, Uri.fromFile(File.createTempFile("delete", "me")));
-                setObjectField(thiz, Obfuscator.M_SNAP_C_EVENT.getValue(SNAPCHAT_VERSION), event);
+                Object event;
+                if(SNAPCHAT_VERSION < Obfuscator.FOUR_ONE_TEN) // make sure we dont delete video files on accident!
+                    event = newInstance(SnapCapturedEventClass, Uri.fromFile(File.createTempFile("delete", "me")));
+                else {
+                    Object builder = newInstance(findClass("com.snapchat.android.model.Snapbryo.Builder", lpparam.classLoader));
+                    builder = callMethod(builder, Obfuscator.BUILDER_CONSTRUCTOR.getValue(SNAPCHAT_VERSION), Uri.fromFile(File.createTempFile("delete", "me")));
+                    event = newInstance(findClass("com.snapchat.android.model.Snapbryo", lpparam.classLoader), builder);
+                }
+
+                setObjectField(thiz, Obfuscator.M_SNAP_C_EVENT.getValue(SNAPCHAT_VERSION), event);                
                 Log.d(LOG_TAG, "prevented snapchat from deleting our video.");
             }
         });
-
     }
 
     /** 
