@@ -136,7 +136,7 @@ public class Snapshare implements IXposedHookLoadPackage {
                         String msg = String.format(str, obja);
                         XposedBridge.log(LOG_TAG +  "Timber: " + msg);
                     } catch(java.util.IllegalFormatConversionException e) {
-                        Log.w(LOG_TAG +  "Timber tried to format: " + str + " -- Snapchat screwed up their own debugging - doh!");
+                        XposedBridge.log(LOG_TAG +  "Timber tried to format: " + str + " -- Snapchat screwed up their own debugging - doh!");
                         param.setResult(null);
                     }
                 }
@@ -281,9 +281,9 @@ public class Snapshare implements IXposedHookLoadPackage {
                             // Make Snapchat show the image
                             media.setContent(bitmap);
                         } catch (FileNotFoundException e) {
-                            Log.w(LOG_TAG +  "File not found!", e);
+                            Log.w(LOG_TAG ,  "File not found!", e);
                         } catch (IOException e) {
-                            Log.e(LOG_TAG +  "IO Error!", e);
+                            Log.e(LOG_TAG ,  "IO Error!", e);
                         }
                     }
                     else if (type.startsWith("video/")) {
@@ -301,7 +301,7 @@ public class Snapshare implements IXposedHookLoadPackage {
                             // Make Snapchat show the video
                             media.setContent(Uri.fromFile(videoFile));
                         } else {
-                            Log.w(LOG_TAG +  "Couldn't resolve content URI to file path!");
+                            Log.w(LOG_TAG ,  "Couldn't resolve content URI to file path!");
                         }
                     }
                     /* Finally the image or video is marked as initialized to prevent reinitialisation of
