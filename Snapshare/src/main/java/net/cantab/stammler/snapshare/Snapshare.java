@@ -69,7 +69,7 @@ import static de.robv.android.xposed.XposedHelpers.setObjectField;
 public class Snapshare implements IXposedHookLoadPackage {
     // Debugging settings
     public static final String LOG_TAG = "Snapshare: ";
-    public static final String SNAPSHARE_VERSION = "1.6.4";
+    public static final String SNAPSHARE_VERSION = "1.6.5";
     public static final boolean DEBUG = false;
     /** Enable Snapchat's internal debugging mode? */
     public static final boolean TIMBER = false;
@@ -115,9 +115,12 @@ public class Snapshare implements IXposedHookLoadPackage {
         else if(version == 181) {
             SNAPCHAT_VERSION = Obfuscator.FOUR_22;
         }
-        else if(version >= 218) {
+        else if(version == 218) {
             SNAPCHAT_VERSION = Obfuscator.FOUR_ONE_TEN;
         } 
+        else if(version >= 222) {
+            SNAPCHAT_VERSION = Obfuscator.FOUR_ONE_TWELVE;
+        }
 
 
         // Timber is Snapchat's internal debugging class. By default, it is disabled in the upstream
@@ -356,49 +359,6 @@ public class Snapshare implements IXposedHookLoadPackage {
 
             }
         });
-
-        // This is a pure debugging hook.
-        if (DEBUG)
-            findAndHookMethod("com.snapchat.android.LandingPageActivity", lpparam.classLoader, "onSnapCapturedEvent", SnapCapturedEventClass, new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                    // boolean b = (Boolean) callMethod(param.thisObject, "isSnapPreviewFragmentShowing");
-                    Bitmap bitmap = (Bitmap) callMethod(param.args[0], "getPhotoBitmap");
-                    XposedBridge.log(LOG_TAG +  "snapCapturedEvent's bitmap trivial? " + (bitmap == null));
-                }
-            });
-
-        // This is a pure debugging hook to print some information about the intent and image.
-        if (DEBUG)
-            findAndHookMethod("com.snapchat.android.SnapPreviewFragment", lpparam.classLoader, "onCreateView", LayoutInflater.class, ViewGroup.class, Bundle.class, new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                    XposedBridge.log(LOG_TAG +  "Fr#onCreateView> mSnapCapturedEvent null? " + (getObjectField(param.thisObject, "mSnapCapturedEvent") == null));
-                    Object sce = callMethod(callSuperMethod(param.thisObject, "getActivity"), "getSnapCapturedEvent");
-                    XposedBridge.log(LOG_TAG +  "Fr#onCreateView> getSnapCapturedEvent returns null? " + (sce == null));
-                }
-
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                    Object thiz = param.thisObject;
-                    Activity curActivity = (Activity) callSuperMethod(thiz, "getActivity");
-                    XposedBridge.log(LOG_TAG +  "Fr#onCreateView> Current Activity: " + curActivity.getLocalClassName());
-                    Intent intent = curActivity.getIntent();
-                    XposedBridge.log(LOG_TAG +  "Fr#onCreateView> Intent type: " + intent.getType());
-                    if (getBooleanField(thiz, "mIsVideoSnap")) {
-                        XposedBridge.log(LOG_TAG +  "Fr#onCreateView> Previewing a video.");
-                    }
-                    else {
-                        Bitmap bitmap = (Bitmap) getObjectField(thiz, "mImageBitmap");
-                        XposedBridge.log(LOG_TAG +  "Fr#onCreateView> mImageBitmap null? " + (bitmap == null));
-                        if (bitmap != null) {
-                            XposedBridge.log(LOG_TAG +  "Fr#onCreateView> Image Width x Height: " + bitmap.getWidth() + " x " + bitmap.getHeight());
-                            DisplayMetrics dm = (DisplayMetrics) getObjectField(thiz, "mDisplayMetrics");
-                            XposedBridge.log(LOG_TAG +  "Fr#onCreateView> SnapPreviewActivity Display Metrics w x h: " + dm.widthPixels + " x " + dm.heightPixels);
-                        }
-                    }
-                }
-            });
 
         /** The following two hooks prevent Snapchat from deleting videos shared with Snapshare.
          * It does so by checking whether the path of the video file to be deleted contains the
