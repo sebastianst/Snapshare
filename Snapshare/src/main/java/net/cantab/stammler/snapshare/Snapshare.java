@@ -21,7 +21,6 @@ package net.cantab.stammler.snapshare;
  a gazillion times. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
@@ -36,8 +35,6 @@ import android.os.Bundle;
 import android.provider.MediaStore;
 import android.util.DisplayMetrics;
 import android.util.Log;
-import android.view.LayoutInflater;
-import android.view.ViewGroup;
 import android.view.WindowManager;
 
 import java.io.File;
@@ -59,8 +56,6 @@ import static android.graphics.Bitmap.createBitmap;
 import static de.robv.android.xposed.XposedHelpers.callMethod;
 import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
 import static de.robv.android.xposed.XposedHelpers.findClass;
-import static de.robv.android.xposed.XposedHelpers.getBooleanField;
-import static de.robv.android.xposed.XposedHelpers.getObjectField;
 import static de.robv.android.xposed.XposedHelpers.newInstance;
 import static de.robv.android.xposed.XposedHelpers.setStaticBooleanField;
 import static de.robv.android.xposed.XposedHelpers.callStaticMethod;
@@ -69,13 +64,13 @@ import static de.robv.android.xposed.XposedHelpers.setObjectField;
 public class Snapshare implements IXposedHookLoadPackage {
     // Debugging settings
     public static final String LOG_TAG = "Snapshare: ";
-    public static final String SNAPSHARE_VERSION = "1.6.5";
+    public static final String SNAPSHARE_VERSION = "1.6.6";
     public static final boolean DEBUG = false;
     /** Enable Snapchat's internal debugging mode? */
     public static final boolean TIMBER = false;
 
     /** what version is snapchat? */
-    public static int SNAPCHAT_VERSION = Obfuscator.FOUR_22;
+    public static int SNAPCHAT_VERSION = Obfuscator.FIVE_ZERO_TWO;
 
     /** Adjustment methods */
     private int adjustMethod;
@@ -109,17 +104,20 @@ public class Snapshare implements IXposedHookLoadPackage {
         if(version < 175) {
             SNAPCHAT_VERSION = Obfuscator.FOUR_20;
         }
-        else if(version == 175) {
+        if(version >= 175) {
             SNAPCHAT_VERSION = Obfuscator.FOUR_21;
         }
-        else if(version == 181) {
+        if(version >= 181) {
             SNAPCHAT_VERSION = Obfuscator.FOUR_22;
         }
-        else if(version == 218) {
+        if(version >= 218) {
             SNAPCHAT_VERSION = Obfuscator.FOUR_ONE_TEN;
         } 
-        else if(version >= 222) {
+        if(version >= 222) {
             SNAPCHAT_VERSION = Obfuscator.FOUR_ONE_TWELVE;
+        }
+        if(version >= 274) {
+            SNAPCHAT_VERSION = Obfuscator.FIVE_ZERO_TWO;
         }
 
 
@@ -332,33 +330,34 @@ public class Snapshare implements IXposedHookLoadPackage {
          * after the method is called, we call the eventbus to send a snapcapture event 
          * with our own media.
          */
-        findAndHookMethod("com.snapchat.android.camera.CameraPreviewFragment", lpparam.classLoader, Obfuscator.CAMERA_LOAD.getValue(SNAPCHAT_VERSION), new XC_MethodHook() {
+        // new in 5.0.2: CameraFragment!
+        findAndHookMethod("com.snapchat.android.camera."+Obfuscator.CAMERA_FRAGMENT.getValue(SNAPCHAT_VERSION), lpparam.classLoader, Obfuscator.CAMERA_LOAD.getValue(SNAPCHAT_VERSION), new XC_MethodHook() {
 
             @Override
             protected void afterHookedMethod(MethodHookParam param)
                     throws Throwable {
                 if(initializedUri == null) return; // We don't have an image to send, so don't try to send one
-
+                XposedBridge.log(LOG_TAG+"ROLLINGOUT");
                 Object snapCaptureEvent;
                 if(SNAPCHAT_VERSION >= Obfuscator.FOUR_ONE_TEN) {
                     // new stuff for 4.1.10: Class called Snapbryo (gross)
                     // this class now stores all the data for snaps. What's good for us is that we can continue using either a bitmap or a videouri in a method.
                     // SnapCapturedEvent(Snapbryo(Builder(Media)))
                     Object builder = newInstance(findClass("com.snapchat.android.model.Snapbryo.Builder", lpparam.classLoader));
-                    builder = callMethod(builder, Obfuscator.BUILDER_CONSTRUCTOR.getValue(SNAPCHAT_VERSION), media.getContent());
-                    Object snapbryo = newInstance(findClass("com.snapchat.android.model.Snapbryo", lpparam.classLoader), builder);
+                    Object snapbryo = callMethod(callMethod(builder, Obfuscator.BUILDER_CONSTRUCTOR.getValue(SNAPCHAT_VERSION), media.getContent()),Obfuscator.CREATE_SNAPBRYO.getValue(SNAPCHAT_VERSION));
                     snapCaptureEvent = newInstance(SnapCapturedEventClass, snapbryo);
                 }
                 else {
                     snapCaptureEvent = newInstance(SnapCapturedEventClass, media.getContent());
                 }
-                callMethod(callStaticMethod(findClass("com.snapchat.android.util.eventbus.BusProvider", lpparam.classLoader), Obfuscator.GET_BUS.getValue(SNAPCHAT_VERSION))
-                        , Obfuscator.BUS_POST.getValue(SNAPCHAT_VERSION), snapCaptureEvent);
+                callMethod(callStaticMethod(findClass("com.snapchat.android.util.eventbus.BusProvider", lpparam.classLoader), Obfuscator.GET_BUS.getValue(SNAPCHAT_VERSION)), 
+                        Obfuscator.BUS_POST.getValue(SNAPCHAT_VERSION), snapCaptureEvent);
 
                 initializedUri = null; // clean up after ourselves. If we don't do this snapchat will crash.
 
             }
         });
+        
 
         /** The following two hooks prevent Snapchat from deleting videos shared with Snapshare.
          * It does so by checking whether the path of the video file to be deleted contains the
@@ -406,6 +405,7 @@ public class Snapshare implements IXposedHookLoadPackage {
                 XposedBridge.log(LOG_TAG +  "prevented snapchat from deleting our video.");
             }
         });
+        
     }
 
     /** 

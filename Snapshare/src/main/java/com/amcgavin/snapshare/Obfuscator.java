@@ -26,20 +26,23 @@ a gazillion times. If not, see <http://www.gnu.org/licenses/>.
  *
  */
 public enum Obfuscator {
-
-    CAMERA_LOAD (new String[] {"refreshFlashButton", "k", "l", "e", "e"}), // com.snapchat.android.camera.CameraPreviewFragment
-    GET_BUS (new String[] {"getInstance", "a", "a", "a", "a"}), // com.snapchat.android.util.eventbus.BusProvider
-    BUS_POST (new String[] {"post", "c", "c", "c", "c"}), // com.squareup.otto.Bus
-    M_SNAP_C_EVENT (new String[] {"mSnapCapturedEvent", "w", "w", "v", "v"}), //com.snapchat.android.SnapPreviewFragment
+    CAMERA_FRAGMENT (new String[] {"CameraPreviewFragment","CameraPreviewFragment","CameraPreviewFragment","CameraPreviewFragment",
+            "CameraPreviewFragment","CameraFragment"}), //com.snapchat.android.camera.WAT
+    CAMERA_LOAD (new String[] {"refreshFlashButton", "k", "l", "e", "e", "p"}), // com.snapchat.android.camera.CameraPreviewFragment
+    GET_BUS (new String[] {"getInstance", "a", "a", "a", "a", "a"}), // com.snapchat.android.util.eventbus.BusProvider
+    BUS_POST (new String[] {"post", "c", "c", "c", "c", "a"}), // com.squareup.otto.Bus
+    M_SNAP_C_EVENT (new String[] {"mSnapCapturedEvent", "w", "w", "v", "v", "u"}), //com.snapchat.android.SnapPreviewFragment
    // M_VIDEO_URI (new String[] {"mVideoUri", "c", "c", "mVideoUri"}), // com.snapchat.android.SnapPreviewFragment, No longer used
-    ON_BACK_PRESS (new String[] {"onDelegatedBackPress", "m", "m", "c", "o"}), // com.snapchat.android.SnapPreviewFragment
-    BUILDER_CONSTRUCTOR (new String[] {"a", "a", "a", "a", "a"}); // com.snapchat.android.model.Snapbryo.Builder
+    ON_BACK_PRESS (new String[] {"onDelegatedBackPress", "m", "m", "c", "o" ,"l"}), // com.snapchat.android.SnapPreviewFragment
+    BUILDER_CONSTRUCTOR (new String[] {"a", "a", "a", "a", "a", "a"}), // com.snapchat.android.model.Snapbryo.Builder
+    CREATE_SNAPBRYO (new String[] {"a", "a", "a", "a", "a", "a"}); //com.snapchat.android.model.Snapbryo.Builder
 
     public static final int FOUR_20 = 0;
     public static final int FOUR_21 = 1;
     public static final int FOUR_22 = 2;
     public static final int FOUR_ONE_TEN = 3;
     public static final int FOUR_ONE_TWELVE = 4;
+    public static final int FIVE_ZERO_TWO = 5;
 
     private String[] v;
 
