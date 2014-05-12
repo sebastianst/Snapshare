@@ -64,7 +64,7 @@ import static de.robv.android.xposed.XposedHelpers.setObjectField;
 public class Snapshare implements IXposedHookLoadPackage {
     // Debugging settings
     public static final String LOG_TAG = "Snapshare: ";
-    public static final String SNAPSHARE_VERSION = "1.6.6";
+    public static final String SNAPSHARE_VERSION = "1.6.6a";
     public static final boolean DEBUG = false;
     /** Enable Snapchat's internal debugging mode? */
     public static final boolean TIMBER = false;
@@ -118,6 +118,9 @@ public class Snapshare implements IXposedHookLoadPackage {
         }
         if(version >= 274) {
             SNAPCHAT_VERSION = Obfuscator.FIVE_ZERO_TWO;
+        }
+        if(version >= 298) {
+            SNAPCHAT_VERSION = Obfuscator.FIVE_ZERO_NINE;
         }
 
 
@@ -331,7 +334,12 @@ public class Snapshare implements IXposedHookLoadPackage {
          * with our own media.
          */
         // new in 5.0.2: CameraFragment!
-        findAndHookMethod("com.snapchat.android.camera."+Obfuscator.CAMERA_FRAGMENT.getValue(SNAPCHAT_VERSION), lpparam.classLoader, Obfuscator.CAMERA_LOAD.getValue(SNAPCHAT_VERSION), new XC_MethodHook() {
+        String cameraFragment;
+        if(SNAPCHAT_VERSION < Obfuscator.FIVE_ZERO_TWO) 
+            cameraFragment = "CameraPreviewFragment";
+        else
+            cameraFragment = "CameraFragment";
+        findAndHookMethod("com.snapchat.android.camera."+cameraFragment, lpparam.classLoader, Obfuscator.CAMERA_LOAD.getValue(SNAPCHAT_VERSION), new XC_MethodHook() {
 
             @Override
             protected void afterHookedMethod(MethodHookParam param)
