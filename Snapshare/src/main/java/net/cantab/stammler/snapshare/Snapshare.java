@@ -64,13 +64,13 @@ import static de.robv.android.xposed.XposedHelpers.setObjectField;
 public class Snapshare implements IXposedHookLoadPackage {
     // Debugging settings
     public static final String LOG_TAG = "Snapshare: ";
-    public static final String SNAPSHARE_VERSION = "1.6.6a";
+    public static final String SNAPSHARE_VERSION = "1.6.6b";
     public static final boolean DEBUG = false;
     /** Enable Snapchat's internal debugging mode? */
     public static final boolean TIMBER = false;
 
     /** what version is snapchat? */
-    public static int SNAPCHAT_VERSION = Obfuscator.FIVE_ZERO_TWO;
+    public static int SNAPCHAT_VERSION = Obfuscator.FIVE_ZERO_TWENTYSEVEN;
 
     /** Adjustment methods */
     private int adjustMethod;
@@ -121,6 +121,9 @@ public class Snapshare implements IXposedHookLoadPackage {
         }
         if(version >= 298) {
             SNAPCHAT_VERSION = Obfuscator.FIVE_ZERO_NINE;
+        }
+        if(version >= 340) {
+            SNAPCHAT_VERSION = Obfuscator.FIVE_ZERO_TWENTYSEVEN;
         }
 
 
