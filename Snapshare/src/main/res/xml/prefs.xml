@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" >
+
+    <PreferenceCategory android:title="@string/pref_general" >
+        <CheckBoxPreference
+            android:defaultValue="true"
+            android:key="pref_key_rotate"
+            android:summaryOff="@string/pref_rotate_off"
+            android:summaryOn="@string/pref_rotate_on"
+            android:title="@string/pref_rotate_title" />
+
+        <ListPreference
+            android:defaultValue="@string/pref_adjustment_default"
+            android:dialogTitle="@string/pref_adjustment_title"
+            android:entries="@array/pref_adjustment_entries"
+            android:entryValues="@array/pref_adjustment_values"
+            android:key="pref_key_adjustment"
+            android:title="@string/pref_adjustment_title" />
+    </PreferenceCategory>
+
+</PreferenceScreen>

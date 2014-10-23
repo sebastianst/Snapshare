@@ -1,3 +1,23 @@
 <resources>
+
     <string name="app_name">Snapshare</string>
+    <string name="pref_general">Images</string>
+    <string name="pref_rotate_title">Rotate Images</string>
+    <string name="pref_rotate_on">Rotation enabled</string>
+    <string name="pref_rotate_off">Rotation disabled</string>
+
+    <string-array name="pref_adjustment_entries">
+        <item>Crop</item>
+        <item>Scale</item>
+        <item>None</item>
+    </string-array>
+    <string-array name="pref_adjustment_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+
+    <string name="pref_adjustment_title">Image Adjustment Method</string>
+    <string name="pref_adjustment_default">Crop</string>
+
 </resources>

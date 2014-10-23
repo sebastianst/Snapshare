@@ -2,6 +2,7 @@ Snapshare
 =========
 Introduction
 ------------
+
 This programme lets you share any image via Snapchat, not only pictures you take with the camera
 from within Snapchat. When you are viewing an image and click on *share*, Snapshare will pop up as
 an option. It will load Snapchat and lets you even paint on the image as if you had just taken it
@@ -10,7 +11,7 @@ with your camera from within Snapchat.
 It uses the [Xposed framework](http://forum.xda-developers.com/showthread.php?t=1574401) to
 intercept launches of Snapchat from Snapshare and do the magic.
 
-A compiled APK can be downloaded from my [Bintray site](https://bintray.com/sebastianst/Android/Snapshare).
+A compiled APK can be downloaded from the [Releases tab](https://github.com/amcgavin/Snapshare/releases/latest).
 
 The software was created using Android Studio with gradle on an Arch Linux machine.
 
