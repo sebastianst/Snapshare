@@ -1,5 +1,9 @@
 Snapshare
 =========
+## Project moved!
+I stopped developing this mod, @P1nGu1n picked up development at https://github.com/P1nGu1n/Snapshare
+After the Snapchat devs introduced the usage of *Proguard*, it's not fun anymore... ;)
+
 Introduction
 ------------
 
